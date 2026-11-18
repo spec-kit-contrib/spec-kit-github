@@ -1,0 +1,22 @@
+{
+  "name": "spec-kit-actions",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "typecheck": "tsc",
+    "test": "node --test \"*/*.test.ts\"",
+    "build": "for a in git-diff git-commit gh-trigger gh-pull-request gh-comment gh-reply gh-react; do esbuild $a/main.ts --bundle --platform=node --target=node24 --format=cjs --outfile=$a/dist/index.cjs || exit 1; done"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.8.0"
+  },
+  "dependencies": {
+    "@actions/core": "^3.0.1",
+    "@actions/github": "^9.1.1"
+  }
+}

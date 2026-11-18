@@ -1,0 +1,31 @@
+name: Spec Kit trigger
+description: Decide whether a Spec Kit command should run for this event, and build its prompt.
+inputs:
+  github-token:
+    description: Token with pull-requests read, used to look up the PR head.
+    required: true
+  github-login:
+    description: Login whose assignment starts the flow.
+    required: true
+outputs:
+  run:
+    description: "'true' when a command should run."
+  command:
+    description: The Spec Kit slash command, e.g. /speckit-specify.
+  ref:
+    description: Git ref the agent should check out (default branch or PR head SHA).
+  prompt:
+    description: Prompt text for the agent.
+  branch:
+    description: "Branch the stage's changes belong on: spec/<issue> for specify, the PR branch otherwise."
+  feature-directory:
+    description: "Spec directory for later stages (e.g. specs/001-greeting-cli); empty for specify."
+  number:
+    description: The issue or PR number the command belongs to.
+  threads:
+    description: Comma-separated ids of the first comments of the review threads to answer; the first is the thread the command was given in. Empty outside review comment events.
+  reason:
+    description: Why nothing runs, when run is 'false'.
+runs:
+  using: node24
+  main: dist/index.cjs

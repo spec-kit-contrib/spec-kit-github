@@ -1,0 +1,23 @@
+name: Spec Kit reply
+description: Reply in pull request review threads, one reply per thread.
+inputs:
+  github-token:
+    required: true
+    description: Token with pull-requests write.
+  pull:
+    required: true
+    description: Pull request number.
+  threads:
+    required: true
+    description: Comma-separated ids of the first comments of the threads. Entry N of the reply goes to the Nth.
+  body-file:
+    required: true
+    description: File with the reply. Entries start with `Thread N:`. Without them the whole text goes to the first thread.
+  footer:
+    description: Optional line added to the first thread's reply, for example the commit it was applied in.
+outputs:
+  ids:
+    description: Comma-separated ids of the replies.
+runs:
+  using: node24
+  main: dist/index.cjs

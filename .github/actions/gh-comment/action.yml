@@ -1,0 +1,21 @@
+name: Spec Kit comment
+description: Create a comment on an issue or PR, or update the one carrying a marker.
+inputs:
+  github-token:
+    required: true
+    description: Token with issues or pull-requests write.
+  issue:
+    required: true
+    description: Issue or PR number.
+  body:
+    description: Comment body. Give this or body-file.
+  body-file:
+    description: File with the comment body. Use it for text from another job.
+  marker:
+    description: Hidden marker. When set, the existing comment carrying it is edited instead of adding a new one.
+outputs:
+  id:
+    description: Comment id.
+runs:
+  using: node24
+  main: dist/index.cjs

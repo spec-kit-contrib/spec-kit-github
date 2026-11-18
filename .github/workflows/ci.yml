@@ -1,0 +1,27 @@
+name: CI
+
+permissions:
+  contents: read
+  id-token: write
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Start DevContainer
+        uses: devcontainer-env/devcontainer-ci@v1
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v22
+
+      - name: Run Tests
+        run: nix develop --command echo "$EXAMPLE_API_DATABASE_URL"

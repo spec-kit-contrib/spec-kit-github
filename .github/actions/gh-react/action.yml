@@ -1,0 +1,12 @@
+name: Spec Kit react
+description: Show the state of a command as a reaction on the comment that gave it, or on the issue for an assignment.
+inputs:
+  github-token:
+    required: true
+    description: Token with issues and pull-requests write.
+  content:
+    required: true
+    description: "eyes (running), +1 (done) or confused (failed). The agent's other state reactions are removed."
+runs:
+  using: node24
+  main: dist/index.cjs

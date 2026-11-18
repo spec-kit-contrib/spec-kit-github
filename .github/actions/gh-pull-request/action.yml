@@ -1,0 +1,28 @@
+name: Spec Kit PR
+description: Find the open PR for a branch, or create it.
+inputs:
+  github-token:
+    required: true
+    description: Token with pull-requests write.
+  branch:
+    required: true
+    description: Head branch.
+  base:
+    description: Base branch. Defaults to the repository's default branch.
+  title:
+    required: true
+    description: PR title, used when the PR is created.
+  body:
+    description: PR body, used when the PR is created.
+  assignees:
+    description: Logins to assign to the PR, comma- or newline-separated, for example the issue's assignees.
+outputs:
+  number:
+    description: PR number.
+  url:
+    description: PR URL.
+  created:
+    description: "'true' when the PR was created by this step."
+runs:
+  using: node24
+  main: dist/index.cjs

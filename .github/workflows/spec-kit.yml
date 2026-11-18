@@ -1,0 +1,226 @@
+# Run a Spec Kit stage on an issue or PR.
+#   assign the issue to the agent          -> /speckit-specify, then open a PR on spec/<issue>
+#   comment /speckit-plan, -tasks, -checklist, -converge or -analyze on a spec/* PR
+#                                          -> that command, pushed to the PR branch
+#   comment /speckit-clarify on the spec.md file in the PR's Files tab, after leaving plain
+#   comments on lines of it    -> one run answers your /speckit-clarify thread and every unresolved
+#                                 line thread you started that is waiting on you, one reply per
+#                                 thread, and edits the spec where a comment settles a question.
+#                                 Replies in the command thread continue it. Humans resolve threads.
+# The files in the PR branch are the source of truth; comments only point at them.
+#
+#   prompt   decides what to run (read-only, no secrets)
+#   ack      reacts with eyes to the command (write token, no API key)
+#   execute  runs the agent: has ANTHROPIC_API_KEY, read-only token; uploads a patch
+#   push     commits the patch (specs/ only): has the write token, no API key
+#   finish   replaces the eyes with thumbs up (all jobs succeeded) or confused (one failed)
+#
+# Issue and issue_comment events run this file from the default branch, so a PR cannot
+# change the rules it is judged by. Review comment events run it from the PR's merge ref;
+# only people with write access can push to a spec/* branch, and push still commits specs/ only. In push, the local actions come from a default-branch
+# checkout and the PR branch is only data (work/). In execute the PR branch is checked out
+# at the root so the agent can work on it; the diff action runs from there but sees no
+# secrets, and push re-filters its patch with trusted code.
+name: Spec Kit
+
+on:
+  issues:
+    types: [assigned]
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spec-kit-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  prompt:
+    # Plain review comments do not start a run; the precise rules are in gh-trigger.
+    if: >-
+      github.event_name != 'pull_request_review_comment' ||
+      github.event.comment.in_reply_to_id ||
+      contains(github.event.comment.body, '/speckit-clarify')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      run: ${{ steps.trigger.outputs.run }}
+      command: ${{ steps.trigger.outputs.command }}
+      prompt: ${{ steps.trigger.outputs.prompt }}
+      ref: ${{ steps.trigger.outputs.ref }}
+      branch: ${{ steps.trigger.outputs.branch }}
+      feature-directory: ${{ steps.trigger.outputs.feature-directory }}
+      number: ${{ steps.trigger.outputs.number }}
+      threads: ${{ steps.trigger.outputs.threads }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+      - id: trigger
+        uses: ./.github/actions/gh-trigger
+        with:
+          github-token: ${{ github.token }}
+          github-login: ${{ vars.AGENT_ASSIGNEE }}
+
+  # Shows that the command was recognized: eyes on the comment (or the issue). Write token only.
+  ack:
+    needs: prompt
+    if: needs.prompt.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+      - uses: ./.github/actions/gh-react
+        with:
+          github-token: ${{ github.token }}
+          content: eyes
+
+  execute:
+    needs: prompt
+    if: needs.prompt.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prompt.outputs.ref }}
+      - uses: devcontainer-env/devcontainer-ci@v1
+      - uses: DeterminateSystems/nix-installer-action@v22
+      - id: claude
+        uses: anthropics/claude-code-action@v1
+        env:
+          # Spec Kit scripts need to know the feature; empty for specify, which creates it.
+          SPECIFY_FEATURE_DIRECTORY: ${{ needs.prompt.outputs.feature-directory }}
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ github.token }}
+          prompt: ${{ needs.prompt.outputs.prompt }}
+          # Allowed tools live in .claude/settings.json.
+          claude_args: --max-turns 30
+          # Our PRs are authored by the bot, which the action treats as untrusted and
+          # then denies shells, interpreters and package managers. Specify and plan only
+          # read and write files; implement has to run project code.
+          restrict_untrusted_prs: ${{ needs.prompt.outputs.command != '/speckit-implement' }}
+      - uses: ./.github/actions/git-diff
+        with:
+          paths: specs
+      # The agent's final message: the report for commands that only report (analyze).
+      - name: Save the agent's final message
+        env:
+          EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
+        run: jq -rs 'flatten | map(select(.type == "result")) | last | .result // ""' "$EXECUTION_FILE" > report.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: result
+          path: |
+            changes.patch
+            report.md
+
+  push:
+    needs: [prompt, execute]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      # Trusted code (the local actions) from the default branch ...
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+      # ... and the branch to commit to, as data only.
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prompt.outputs.ref }}
+          path: work
+      - uses: actions/download-artifact@v4
+        with:
+          name: result
+      - id: commit
+        uses: ./.github/actions/git-commit
+        with:
+          directory: work
+          patch: changes.patch
+          paths: specs
+          branch: ${{ needs.prompt.outputs.branch }}
+          mode: ${{ github.event_name == 'issues' && 'create' || 'update' }}
+          message: ${{ needs.prompt.outputs.command }} #${{ needs.prompt.outputs.number }}
+      - if: steps.commit.outputs.changed == 'true' && github.event_name == 'issues'
+        uses: ./.github/actions/gh-pull-request
+        with:
+          github-token: ${{ github.token }}
+          branch: ${{ needs.prompt.outputs.branch }}
+          title: "[spec] #${{ needs.prompt.outputs.number }}"
+          # The PR is assigned to whoever the issue is assigned to.
+          assignees: ${{ join(github.event.issue.assignees.*.login, ',') }}
+          body: |
+            Closes #${{ needs.prompt.outputs.number }}
+
+            Stage: ${{ needs.prompt.outputs.command }}. Review the changed files in this PR.
+      - if: steps.commit.outputs.changed == 'true' && github.event_name == 'issue_comment'
+        uses: ./.github/actions/gh-comment
+        with:
+          github-token: ${{ github.token }}
+          issue: ${{ needs.prompt.outputs.number }}
+          body: Stage `${{ needs.prompt.outputs.command }}` done in `${{ steps.commit.outputs.sha }}`. Review the changed files in this PR.
+      # A command that changed nothing (for example tasks before there is a plan): the agent's
+      # own message says why. Analyze and clarify have their own replies.
+      - if: >-
+          steps.commit.outputs.changed != 'true' &&
+          github.event_name != 'pull_request_review_comment' &&
+          needs.prompt.outputs.command != '/speckit-analyze'
+        uses: ./.github/actions/gh-comment
+        with:
+          github-token: ${{ github.token }}
+          issue: ${{ needs.prompt.outputs.number }}
+          body-file: report.md
+      # Analyze only reports and changes no files: its report becomes one comment, updated in place.
+      - if: needs.prompt.outputs.command == '/speckit-analyze'
+        uses: ./.github/actions/gh-comment
+        with:
+          github-token: ${{ github.token }}
+          issue: ${{ needs.prompt.outputs.number }}
+          body-file: report.md
+          marker: speckit-analyze
+      # Clarify: the agent's final message holds one entry per thread, posted as replies.
+      - if: github.event_name == 'pull_request_review_comment'
+        uses: ./.github/actions/gh-reply
+        with:
+          github-token: ${{ github.token }}
+          pull: ${{ needs.prompt.outputs.number }}
+          threads: ${{ needs.prompt.outputs.threads }}
+          body-file: report.md
+          footer: ${{ steps.commit.outputs.changed == 'true' && format('Applied in `{0}`.', steps.commit.outputs.sha) || '' }}
+
+  # The final state replaces the eyes: thumbs up when every job succeeded, confused otherwise.
+  finish:
+    needs: [prompt, execute, push]
+    if: always() && needs.prompt.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+      - uses: ./.github/actions/gh-react
+        with:
+          github-token: ${{ github.token }}
+          content: ${{ (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) && 'confused' || '+1' }}

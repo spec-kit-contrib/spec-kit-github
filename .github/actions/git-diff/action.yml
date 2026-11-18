@@ -1,0 +1,20 @@
+name: Spec Kit diff
+description: Write the working-tree changes under the allowed paths to a patch file.
+inputs:
+  paths:
+    description: Allowed paths, one per line (plain paths, no globs).
+    required: true
+  directory:
+    description: Repository directory.
+    default: .
+  output:
+    description: Patch file to write.
+    default: changes.patch
+outputs:
+  patch:
+    description: Absolute path of the patch file.
+  changed:
+    description: "'true' when there are changes."
+runs:
+  using: node24
+  main: dist/index.cjs

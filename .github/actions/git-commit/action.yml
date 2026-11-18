@@ -1,0 +1,32 @@
+name: Spec Kit commit
+description: Apply a patch (allowed paths only), commit it and push it to a branch.
+inputs:
+  patch:
+    description: Patch file to apply.
+    required: true
+  paths:
+    description: Allowed paths, one per line. Everything else in the patch is ignored.
+    required: true
+  branch:
+    description: Branch to push to.
+    required: true
+  mode:
+    description: "create (the branch must not exist) or update (it must exist)."
+    required: true
+  message:
+    description: Commit message.
+    required: true
+  author:
+    description: Commit author, as "Name <email>".
+    default: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
+  directory:
+    description: Repository directory (a checkout with push credentials).
+    default: .
+outputs:
+  changed:
+    description: "'true' when a commit was pushed."
+  sha:
+    description: Full hash of the pushed commit; empty when nothing changed.
+runs:
+  using: node24
+  main: dist/index.cjs
