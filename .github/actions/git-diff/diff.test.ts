@@ -22,3 +22,20 @@ test("changes only outside the allowed paths give an empty patch", () => {
   write(work, "README.md", "changed\n");
   assert.equal(diff(work, ["specs"]), "");
 });
+
+test("with the whole repository allowed, excluded paths still stay out of the patch", () => {
+  const { work } = makeRepo();
+  write(work, "src/app.py", "print('hi')\n");
+  write(work, ".github/workflows/evil.yml", "on: push\n");
+  write(work, "flake.nix", "{}\n");
+  const patch = diff(work, ["."], [".github", "flake.nix"]);
+  assert.match(patch, /src\/app\.py/);
+  assert.doesNotMatch(patch, /evil\.yml/);
+  assert.doesNotMatch(patch, /flake\.nix/);
+});
+
+test("a change only in excluded paths gives an empty patch", () => {
+  const { work } = makeRepo();
+  write(work, ".claude/settings.json", "{}\n");
+  assert.equal(diff(work, ["."], [".claude"]), "");
+});

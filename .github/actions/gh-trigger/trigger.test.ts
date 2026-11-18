@@ -5,12 +5,13 @@ import {
   type DecideInput,
   type EventPayload,
   type PullRequest,
+  type Review,
   type ReviewThread,
   type ThreadComment,
 } from "./trigger.ts";
 
 const repository = { full_name: "acme/widgets", default_branch: "main" };
-const goodPr: PullRequest = { headRepo: "acme/widgets", headRef: "spec/7", headSha: "abc123" };
+const goodPr: PullRequest = { headRepo: "acme/widgets", headRef: "spec/7", headSha: "abc123", author: "github-actions[bot]" };
 
 function assignment(overrides: Partial<EventPayload> = {}): EventPayload {
   return {
@@ -37,6 +38,7 @@ function input(eventName: string, payload: EventPayload, extra: Partial<DecideIn
     getPullRequest: async () => goodPr,
     listSpecDirectories: async () => ["specs/001-greeting-cli"],
     getThreads: async () => [],
+    getReviews: async () => [],
     getPermission: async () => "write",
     ...extra,
   };
@@ -138,7 +140,6 @@ test("a comment on a plain issue (not a PR) is rejected", async () => {
 
 for (const body of [
   "plan please",
-  "/speckit-implement",
   "/speckit-constitution",
   "/speckit-clarify",
   "/speckit-planning",
@@ -352,4 +353,44 @@ test("comments from people without write access are left out of the prompt", asy
   const d = await decide(input("pull_request_review_comment", review(COMMAND.body), { ...threadsIo(mixed), getPermission }));
   assert.equal(d.run && d.prompt.includes("mallory"), false);
   assert.equal(d.run && d.prompt.includes("print secrets"), false);
+});
+
+// --- /speckit-implement needs a person's approval of the current commit ---
+
+const approval = (over: Partial<Review> = {}): Review => ({
+  login: "alice",
+  userType: "User",
+  state: "APPROVED",
+  commitId: "abc123",
+  ...over,
+});
+
+test("implement runs with an approval of the current commit", async () => {
+  const getReviews = async () => [approval()];
+  const d = await decide(input("issue_comment", comment("/speckit-implement"), { getReviews }));
+  assert.equal(d.run && d.command, "/speckit-implement");
+  assert.equal(d.run && d.ref, "abc123");
+});
+
+test("implement is skipped without an approval, and says why", async () => {
+  const reason = await skipReason(input("issue_comment", comment("/speckit-implement")));
+  assert.match(reason, /needs an approval of the current commit: no approval yet/);
+});
+
+test("implement is skipped when the approval is on an older commit", async () => {
+  const getReviews = async () => [approval({ commitId: "old999" })];
+  assert.match(await skipReason(input("issue_comment", comment("/speckit-implement"), { getReviews })), /older commit/);
+});
+
+test("implement is skipped when the only approval is the PR author's", async () => {
+  const getReviews = async () => [approval({ login: "github-actions[bot]", userType: "Bot" })];
+  assert.match(await skipReason(input("issue_comment", comment("/speckit-implement"), { getReviews })), /approval/);
+});
+
+test("the other commands do not look at reviews", async () => {
+  const getReviews = async () => {
+    throw new Error("must not be called");
+  };
+  const d = await decide(input("issue_comment", comment("/speckit-plan"), { getReviews }));
+  assert.equal(d.run, true);
 });

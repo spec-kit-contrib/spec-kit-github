@@ -1,6 +1,6 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
-import { decide, type EventPayload, type ReviewThread } from "./trigger.ts";
+import { decide, type EventPayload, type Review, type ReviewThread } from "./trigger.ts";
 
 async function main(): Promise<void> {
   const octokit = github.getOctokit(core.getInput("github-token", { required: true }));
@@ -54,6 +54,16 @@ async function main(): Promise<void> {
     }));
   };
 
+  const getReviews = async (pullNumber: number): Promise<Review[]> => {
+    const reviews = await octokit.paginate(octokit.rest.pulls.listReviews, { ...context.repo, pull_number: pullNumber });
+    return reviews.map((review) => ({
+      login: review.user?.login ?? "",
+      userType: review.user?.type ?? "",
+      state: review.state,
+      commitId: review.commit_id ?? "",
+    }));
+  };
+
   const getPermission = async (login: string): Promise<string> => {
     try {
       const { data } = await octokit.rest.repos.getCollaboratorPermissionLevel({ ...context.repo, username: login });
@@ -70,10 +80,16 @@ async function main(): Promise<void> {
     githubLogin: core.getInput("github-login"),
     listSpecDirectories,
     getThreads,
+    getReviews,
     getPermission,
     getPullRequest: async (number) => {
       const { data } = await octokit.rest.pulls.get({ ...context.repo, pull_number: number });
-      return { headRepo: data.head.repo?.full_name ?? "", headRef: data.head.ref, headSha: data.head.sha };
+      return {
+        headRepo: data.head.repo?.full_name ?? "",
+        headRef: data.head.ref,
+        headSha: data.head.sha,
+        author: data.user?.login ?? "",
+      };
     },
   });
 

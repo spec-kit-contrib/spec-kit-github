@@ -93,3 +93,35 @@ test("parseAuthor", () => {
   assert.deepEqual(parseAuthor("A B <a@b.c>"), { name: "A B", email: "a@b.c" });
   assert.throws(() => parseAuthor("nobody"), /Name <email>/);
 });
+
+test("with the whole repository allowed, excluded paths in the patch are ignored", () => {
+  const { remote, work } = makeRepo();
+  const patch = patchFile(remote, {
+    "src/app.py": "print('hi')\n",
+    "tests/test_app.py": "def test(): pass\n",
+    ".github/workflows/evil.yml": "on: push\n",
+    ".claude/settings.json": "{}\n",
+    "flake.nix": "{}\n",
+  });
+  const protectedPaths = [".github", ".claude", "flake.nix"];
+  const result = commit(options(work, patch, { paths: ["."], excludes: protectedPaths }));
+  assert.equal(result.changed, true);
+  assert.deepEqual(remoteFiles(remote, "spec/7"), ["README.md", "src/app.py", "tests/test_app.py"]);
+});
+
+test("a patch that only touches excluded paths changes nothing", () => {
+  const { remote, work } = makeRepo();
+  const patch = patchFile(remote, { ".github/workflows/evil.yml": "on: push\n", "flake.nix": "{}\n" });
+  assert.deepEqual(commit(options(work, patch, { paths: ["."], excludes: [".github", "flake.nix"] })), {
+    changed: false,
+    sha: "",
+  });
+});
+
+test("an excluded path wins over an allowed one that contains it", () => {
+  const { remote, work } = makeRepo();
+  const patch = patchFile(remote, { "specs/001-x/spec.md": "spec\n", "specs/001-x/secret/run.sh": "evil\n" });
+  const result = commit(options(work, patch, { paths: ["specs"], excludes: ["specs/001-x/secret"] }));
+  assert.equal(result.changed, true);
+  assert.deepEqual(remoteFiles(remote, "spec/7"), ["README.md", "specs/001-x/spec.md"]);
+});

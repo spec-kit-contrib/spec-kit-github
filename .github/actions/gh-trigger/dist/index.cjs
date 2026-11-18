@@ -24585,6 +24585,29 @@ var SPEC_BRANCH_PREFIX = "spec/";
 var isAgent = (login) => login.replace(/\[bot\]$/, "") === "github-actions";
 var skip = (reason) => ({ run: false, reason });
 
+// gh-trigger/approval.ts
+var DECISIVE = ["APPROVED", "CHANGES_REQUESTED", "DISMISSED"];
+async function approvalStatus(reviews, headSha, author, getPermission) {
+  const latest = /* @__PURE__ */ new Map();
+  for (const review of reviews) if (DECISIVE.includes(review.state)) latest.set(review.login, review);
+  const problems = [];
+  let approvals = 0;
+  for (const review of latest.values()) {
+    if (review.userType !== "User") continue;
+    const writer = WRITE_PERMISSIONS.includes(await getPermission(review.login));
+    if (review.state === "CHANGES_REQUESTED" && writer) problems.push(`@${review.login} requested changes`);
+    if (review.state !== "APPROVED") continue;
+    if (review.login === author) problems.push(`@${review.login} opened the PR and cannot approve it`);
+    else if (!writer) problems.push(`@${review.login} has no write access`);
+    else if (review.commitId !== headSha) problems.push(`@${review.login} approved an older commit`);
+    else approvals += 1;
+  }
+  const blocking = problems.filter((p) => p.endsWith("requested changes"));
+  if (blocking.length > 0) return { approved: false, reason: blocking.join("; ") };
+  if (approvals > 0) return { approved: true, reason: "" };
+  return { approved: false, reason: problems.length > 0 ? problems.join("; ") : "no approval yet" };
+}
+
 // gh-trigger/review.ts
 var COMMAND = "/speckit-clarify";
 var SPEC_FILE = /^(specs\/[^/]+)\/spec\.md$/;
@@ -24651,7 +24674,7 @@ async function decideReviewComment({ payload, getThreads, getPermission }) {
 }
 
 // gh-trigger/trigger.ts
-var COMMENT_COMMANDS = ["plan", "tasks", "checklist", "converge", "analyze"];
+var COMMENT_COMMANDS = ["plan", "tasks", "checklist", "converge", "analyze", "implement"];
 async function decide(input) {
   const { eventName, payload } = input;
   if (eventName === "issues") return decideAssignment(input);
@@ -24681,7 +24704,7 @@ ${body ?? ""}
     threads: []
   };
 }
-async function decideComment({ payload, getPullRequest, getPermission, listSpecDirectories }) {
+async function decideComment({ payload, getPullRequest, getReviews, getPermission, listSpecDirectories }) {
   const { issue: issue2, comment } = payload;
   if (!issue2?.pull_request) return skip("comment is not on a PR");
   if (!comment) return skip("no comment in payload");
@@ -24696,6 +24719,10 @@ async function decideComment({ payload, getPullRequest, getPermission, listSpecD
   const pr = await getPullRequest(issue2.number);
   if (pr.headRepo !== payload.repository.full_name) return skip("PR is from a fork");
   if (!pr.headRef.startsWith(SPEC_BRANCH_PREFIX)) return skip("PR branch is not spec/*");
+  if (match[1] === "implement") {
+    const status = await approvalStatus(await getReviews(issue2.number), pr.headSha, pr.author, getPermission);
+    if (!status.approved) return skip(`/speckit-implement needs an approval of the current commit: ${status.reason}`);
+  }
   const directories = await listSpecDirectories(pr.headSha);
   if (directories.length !== 1) {
     throw new Error(`expected exactly one directory in specs/ at ${pr.headSha}, found ${directories.length}`);
@@ -24748,6 +24775,15 @@ async function main() {
       }))
     }));
   };
+  const getReviews = async (pullNumber) => {
+    const reviews = await octokit.paginate(octokit.rest.pulls.listReviews, { ...context3.repo, pull_number: pullNumber });
+    return reviews.map((review) => ({
+      login: review.user?.login ?? "",
+      userType: review.user?.type ?? "",
+      state: review.state,
+      commitId: review.commit_id ?? ""
+    }));
+  };
   const getPermission = async (login) => {
     try {
       const { data } = await octokit.rest.repos.getCollaboratorPermissionLevel({ ...context3.repo, username: login });
@@ -24763,10 +24799,16 @@ async function main() {
     githubLogin: getInput("github-login"),
     listSpecDirectories,
     getThreads,
+    getReviews,
     getPermission,
     getPullRequest: async (number) => {
       const { data } = await octokit.rest.pulls.get({ ...context3.repo, pull_number: number });
-      return { headRepo: data.head.repo?.full_name ?? "", headRef: data.head.ref, headSha: data.head.sha };
+      return {
+        headRepo: data.head.repo?.full_name ?? "",
+        headRef: data.head.ref,
+        headSha: data.head.sha,
+        author: data.user?.login ?? ""
+      };
     }
   });
   if (!decision.run) {

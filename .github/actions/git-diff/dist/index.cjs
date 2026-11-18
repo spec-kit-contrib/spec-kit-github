@@ -19633,13 +19633,23 @@ function error(message, properties = {}) {
 }
 
 // core/paths.ts
-function parsePaths(input) {
+function parse(input) {
   const paths = input.split("\n").map((line) => line.trim().replace(/\/+$/, "")).filter(Boolean);
-  if (paths.length === 0) throw new Error("no paths given");
   for (const path of paths) {
     if (path.startsWith("/") || path.split("/").includes("..")) throw new Error(`invalid path: ${path}`);
   }
   return paths;
+}
+function parsePaths(input) {
+  const paths = parse(input);
+  if (paths.length === 0) throw new Error("no paths given");
+  return paths;
+}
+function parseExcludes(input) {
+  return parse(input);
+}
+function pathspec(paths, excludes) {
+  return [...paths, ...excludes.map((path) => `:(exclude)${path}`)];
 }
 
 // core/git.ts
@@ -19655,15 +19665,20 @@ function git(args, { cwd, input } = {}) {
 }
 
 // git-diff/diff.ts
-function diff(directory, paths) {
-  if (!git(["status", "--porcelain", "--", ...paths], { cwd: directory }).trim()) return "";
-  git(["add", "-A", "--", ...paths], { cwd: directory });
-  return git(["diff", "--cached", "--binary", "--", ...paths], { cwd: directory });
+function diff(directory, paths, excludes = []) {
+  const spec = pathspec(paths, excludes);
+  if (!git(["status", "--porcelain", "--", ...spec], { cwd: directory }).trim()) return "";
+  git(["add", "-A", "--", ...spec], { cwd: directory });
+  return git(["diff", "--cached", "--binary", "--", ...spec], { cwd: directory });
 }
 
 // git-diff/main.ts
 try {
-  const patch = diff(getInput("directory") || ".", parsePaths(getInput("paths", { required: true })));
+  const patch = diff(
+    getInput("directory") || ".",
+    parsePaths(getInput("paths", { required: true })),
+    parseExcludes(getInput("exclude"))
+  );
   const output = (0, import_node_path.resolve)(getInput("output") || "changes.patch");
   (0, import_node_fs.writeFileSync)(output, patch);
   setOutput("patch", output);

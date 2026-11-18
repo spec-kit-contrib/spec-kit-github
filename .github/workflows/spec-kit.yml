@@ -2,6 +2,9 @@
 #   assign the issue to the agent          -> /speckit-specify, then open a PR on spec/<issue>
 #   comment /speckit-plan, -tasks, -checklist, -converge or -analyze on a spec/* PR
 #                                          -> that command, pushed to the PR branch
+#   comment /speckit-implement on a spec/* PR after a person approved its current commit
+#                                          -> the agent builds the tasks and pushes the code to the
+#                                             PR branch. Everything but the protected paths may change.
 #   comment /speckit-clarify on the spec.md file in the PR's Files tab, after leaving plain
 #   comments on lines of it    -> one run answers your /speckit-clarify thread and every unresolved
 #                                 line thread you started that is waiting on you, one reply per
@@ -33,6 +36,19 @@ on:
 
 permissions:
   contents: read
+
+env:
+  # Never committed by any command, so the agent cannot change what runs or what it may do.
+  PROTECTED_PATHS: |
+    .github
+    .claude
+    .specify
+    .devcontainer
+    .envrc
+    flake.nix
+    flake.lock
+    CLAUDE.md
+    LICENSE
 
 concurrency:
   group: spec-kit-${{ github.event.issue.number || github.event.pull_request.number }}
@@ -90,7 +106,7 @@ jobs:
     needs: prompt
     if: needs.prompt.outputs.run == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: ${{ needs.prompt.outputs.command == '/speckit-implement' && 45 || 20 }}
     permissions:
       contents: read
       issues: read
@@ -99,8 +115,22 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ref: ${{ needs.prompt.outputs.ref }}
+      # Implement runs the project's own tools, so the environment must be the trusted one: take
+      # these files from the default branch, whatever the PR branch has.
+      - name: Take the environment files from the default branch
+        if: needs.prompt.outputs.command == '/speckit-implement'
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          git fetch --depth=1 origin "$DEFAULT_BRANCH"
+          git checkout FETCH_HEAD -- .envrc flake.nix flake.lock .devcontainer
       - uses: devcontainer-env/devcontainer-ci@v1
       - uses: DeterminateSystems/nix-installer-action@v22
+      # direnv allow, then export .envrc (use flake): the flake's tools and the devcontainer's
+      # variables reach the steps below, including the agent.
+      - name: Load the project environment
+        if: needs.prompt.outputs.command == '/speckit-implement'
+        uses: HatsuneMiku3939/direnv-action@be141d0ba5b8fecd849a166ff5a9e0b482582175 # v1.4.11
       - id: claude
         uses: anthropics/claude-code-action@v1
         env:
@@ -110,15 +140,20 @@ jobs:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ github.token }}
           prompt: ${{ needs.prompt.outputs.prompt }}
-          # Allowed tools live in .claude/settings.json.
-          claude_args: --max-turns 30
+          # Allowed tools live in .claude/settings.json. Implement also gets the shell: it builds
+          # and tests the code, and what it may write is limited later, in git-diff and git-commit.
+          claude_args: >-
+            --max-turns ${{ needs.prompt.outputs.command == '/speckit-implement' && 80 || 30 }}
+            ${{ needs.prompt.outputs.command == '/speckit-implement' && '--allowedTools Bash,Read,Write,Edit,Glob,Grep' || '' }}
           # Our PRs are authored by the bot, which the action treats as untrusted and
           # then denies shells, interpreters and package managers. Specify and plan only
           # read and write files; implement has to run project code.
           restrict_untrusted_prs: ${{ needs.prompt.outputs.command != '/speckit-implement' }}
       - uses: ./.github/actions/git-diff
         with:
-          paths: specs
+          # Documents for every command; implement may write anywhere but the protected paths.
+          paths: ${{ needs.prompt.outputs.command == '/speckit-implement' && '.' || 'specs' }}
+          exclude: ${{ env.PROTECTED_PATHS }}
       # The agent's final message: the report for commands that only report (analyze).
       - name: Save the agent's final message
         env:
@@ -156,7 +191,8 @@ jobs:
         with:
           directory: work
           patch: changes.patch
-          paths: specs
+          paths: ${{ needs.prompt.outputs.command == '/speckit-implement' && '.' || 'specs' }}
+          exclude: ${{ env.PROTECTED_PATHS }}
           branch: ${{ needs.prompt.outputs.branch }}
           mode: ${{ github.event_name == 'issues' && 'create' || 'update' }}
           message: ${{ needs.prompt.outputs.command }} #${{ needs.prompt.outputs.number }}

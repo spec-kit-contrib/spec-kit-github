@@ -1,11 +1,12 @@
 // Pure decision logic: no I/O except the injected lookups.
+import { approvalStatus } from "./approval.ts";
 import { decideReviewComment } from "./review.ts";
 import { SPEC_BRANCH_PREFIX, WRITE_PERMISSIONS, skip, type DecideInput, type Decision } from "./types.ts";
 
-export type { DecideInput, Decision, EventPayload, PullRequest, ReviewThread, ThreadComment } from "./types.ts";
+export type { DecideInput, Decision, EventPayload, PullRequest, Review, ReviewThread, ThreadComment } from "./types.ts";
 
 // Commands that may be triggered by a PR comment. Specify is started by assignment.
-export const COMMENT_COMMANDS = ["plan", "tasks", "checklist", "converge", "analyze"];
+export const COMMENT_COMMANDS = ["plan", "tasks", "checklist", "converge", "analyze", "implement"];
 
 export async function decide(input: DecideInput): Promise<Decision> {
   const { eventName, payload } = input;
@@ -35,7 +36,7 @@ function decideAssignment({ payload, githubLogin }: DecideInput): Decision {
   };
 }
 
-async function decideComment({ payload, getPullRequest, getPermission, listSpecDirectories }: DecideInput): Promise<Decision> {
+async function decideComment({ payload, getPullRequest, getReviews, getPermission, listSpecDirectories }: DecideInput): Promise<Decision> {
   const { issue, comment } = payload;
   if (!issue?.pull_request) return skip("comment is not on a PR");
   if (!comment) return skip("no comment in payload");
@@ -53,6 +54,13 @@ async function decideComment({ payload, getPullRequest, getPermission, listSpecD
   const pr = await getPullRequest(issue.number);
   if (pr.headRepo !== payload.repository.full_name) return skip("PR is from a fork");
   if (!pr.headRef.startsWith(SPEC_BRANCH_PREFIX)) return skip("PR branch is not spec/*");
+
+  // Implement runs generated code with the API key present, so a person has to have approved the
+  // PR as it is now. Every other command only writes documents under specs/.
+  if (match[1] === "implement") {
+    const status = await approvalStatus(await getReviews(issue.number), pr.headSha, pr.author, getPermission);
+    if (!status.approved) return skip(`/speckit-implement needs an approval of the current commit: ${status.reason}`);
+  }
 
   // Spec Kit needs to be told which feature a later stage belongs to. A PR holds exactly one.
   const directories = await listSpecDirectories(pr.headSha);

@@ -18,7 +18,8 @@ The files in the PR branch are the source of truth. Comments only point at them.
 
 Status: `specify`, `plan`, `tasks`, `analyze`, `checklist` and `clarify` have run end to end.
 `converge` is allowed but has not been run yet, because it only becomes useful after `implement`.
-`implement` and `constitution` are not supported (see [Limitations](#limitations)).
+`implement` is built and gated (see [Implement](#implement)). `constitution` is not supported (see
+[Limitations](#limitations)).
 
 ## How it works
 
@@ -70,6 +71,7 @@ Every PR is also an issue on GitHub, so PR conversation comments arrive as `issu
 | PR comment | `/speckit-tasks` | `tasks.md` |
 | PR comment | `/speckit-checklist` | `checklists/*.md` |
 | PR comment | `/speckit-converge` | appends remaining work to `tasks.md` |
+| PR comment | `/speckit-implement` | the code for the tasks, pushed to the PR branch, once a person approved the PR |
 | PR comment | `/speckit-analyze` | consistency report, posted as one comment that later runs update |
 | Comment on the `spec.md` file | `/speckit-clarify` | a reply in each of your open line threads, see below |
 
@@ -97,6 +99,27 @@ the agent answered last and threads on other files are left alone, and only comm
 with write access are read. A `/speckit-clarify` comment on a single line works too: that thread
 is the command thread. Post with "Comment" to run it right away, or with "Start a review" and submit
 the review when you are ready, so the line comments and the command arrive together.
+
+## Implement
+
+`/speckit-implement` is the one command that runs code, so it has extra rules:
+
+- **A person has to approve first.** The command is skipped, with the reason in the run log, unless
+  someone with write access, who did not open the PR and is not a bot, has approved the PR's
+  **current** commit and nobody with write access is asking for changes. Any push after the approval,
+  including the agent's own commits, makes it stale, so approve after the last stage has run and
+  approve again after each implement run.
+- **It builds with your toolchain.** The `execute` job loads `.envrc` (`use flake`) with direnv, so
+  the agent gets the tools in your `flake.nix` and the variables from the devcontainer. Add your
+  language's tools to `packages` in `flake.nix`. These files are taken from the default branch,
+  never from the PR branch.
+- **It may change any file except the protected ones.** `.github`, `.claude`, `.specify`,
+  `.devcontainer`, `.envrc`, `flake.nix`, `flake.lock`, `CLAUDE.md` and `LICENSE` are never
+  committed by any command, so the agent cannot change what runs or what it may do. The list is
+  `PROTECTED_PATHS` in the workflow.
+- **It has the shell, and more room.** Up to 80 turns and 45 minutes, with the Bash tool. Use a
+  dedicated API key with a spend limit, and treat the runner as untrusted: the agent runs commands
+  that came out of a model, and network access from the runner is open.
 
 **Two kinds of input.** A conversation comment on the PR runs a stage over the whole feature
 (`/speckit-plan`, `/speckit-tasks`, ...). A comment on `spec.md` is feedback on that file
@@ -136,10 +159,10 @@ and show how a project's toolchain and services reach both you and CI:
   are there. There is no separate CI job for this here, because it would run in every copy for
   nothing; the `execute` job below is the only place the workflow starts the devcontainer.
 
-The `execute` job starts the devcontainer and installs Nix, but today's commands (specify, plan,
-tasks, analyze, checklist, clarify) only read and write files, so the agent does not use that
-environment yet. It is there for `/speckit-implement`, which needs the project's own toolchain and
-services. Replace the example service and variables with your project's.
+The `execute` job starts the devcontainer and installs Nix. Specify, plan, tasks, analyze, checklist
+and clarify only read and write files, so they do not use the environment. `/speckit-implement`
+does: it loads the flake with direnv, see [Implement](#implement). Replace the example service and
+variables with your project's, and add your language's tools to the flake.
 
 ## Security model
 
@@ -148,9 +171,10 @@ services. Replace the example service and variables with your project's.
 - **Only `specs/**` is committed.** `git-commit` applies only allowed paths from the agent's
   patch and ignores everything else, so the agent cannot change the workflow, the actions or the
   settings.
-- **Who can trigger a stage.** A comment runs only if the commenter is an owner, member or
-  collaborator, the PR is from this repository, and the branch starts with `spec/`. Assignment
-  runs only for the configured login.
+- **Who can trigger a stage.** A comment runs only if the commenter has write access to the
+  repository (checked through the API), the PR is from this repository, and the branch starts with
+  `spec/`. Assignment runs only for the configured login. `/speckit-implement` also needs an
+  approval, see [Implement](#implement).
 - **Rules come from the default branch.** These events run the workflow file from the default
   branch. In `push`, the local actions are read from a default-branch checkout and the PR branch
   is only data.
@@ -160,7 +184,8 @@ services. Replace the example service and variables with your project's.
   personal data in issues.
 - **Untrusted PR author guard.** Our PRs are authored by the bot, so `claude-code-action`
   denies shells, interpreters and package managers on them. That is fine for the commands above,
-  which only read and write files. The workflow turns the guard off only for `/speckit-implement`.
+  which only read and write files. The workflow turns the guard off only for `/speckit-implement`,
+  which has to run the project's tools.
 
 ## Layout
 
@@ -193,8 +218,6 @@ npm run build   # bundles each action into <name>/dist/index.cjs
 
 ## Limitations
 
-- **`/speckit-implement`** needs an approval check, the flake environment for the agent and a
-  wider path allowlist. Not built.
 - **`/speckit-constitution`** writes outside `specs/` and is better done by hand once.
 - Pull requests from forks are not supported.
 - Runs for one PR are queued, one at a time. If you post several commands while a run is still

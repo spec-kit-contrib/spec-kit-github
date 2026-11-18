@@ -19632,16 +19632,28 @@ function error(message, properties = {}) {
 }
 
 // core/paths.ts
-function parsePaths(input) {
+function parse(input) {
   const paths = input.split("\n").map((line) => line.trim().replace(/\/+$/, "")).filter(Boolean);
-  if (paths.length === 0) throw new Error("no paths given");
   for (const path of paths) {
     if (path.startsWith("/") || path.split("/").includes("..")) throw new Error(`invalid path: ${path}`);
   }
   return paths;
 }
-function includeArgs(paths) {
-  return paths.flatMap((path) => [`--include=${path}`, `--include=${path}/*`]);
+function parsePaths(input) {
+  const paths = parse(input);
+  if (paths.length === 0) throw new Error("no paths given");
+  return paths;
+}
+function parseExcludes(input) {
+  return parse(input);
+}
+function pathspec(paths, excludes) {
+  return [...paths, ...excludes.map((path) => `:(exclude)${path}`)];
+}
+function applyArgs(paths, excludes) {
+  const exclude = excludes.flatMap((path) => [`--exclude=${path}`, `--exclude=${path}/*`]);
+  const include = paths.flatMap((path) => path === "." ? ["--include=*"] : [`--include=${path}`, `--include=${path}/*`]);
+  return [...exclude, ...include];
 }
 
 // git-commit/commit.ts
@@ -19675,15 +19687,17 @@ function parseAuthor(author) {
 }
 function commit(options) {
   const { directory: cwd, paths, branch } = options;
+  const excludes = options.excludes ?? [];
+  const spec = pathspec(paths, excludes);
   const exists2 = gitSucceeds(["ls-remote", "--exit-code", "--heads", "origin", branch], { cwd });
   if (options.mode === "create" && exists2) throw new Error(`branch ${branch} already exists`);
   if (options.mode === "update" && !exists2) throw new Error(`branch ${branch} does not exist`);
   const patch = (0, import_node_fs.readFileSync)(options.patch, "utf8");
   if (!patch.trim()) return { changed: false, sha: "" };
-  git(["apply", ...includeArgs(paths), "-"], { cwd, input: patch });
-  if (!git(["status", "--porcelain", "--", ...paths], { cwd }).trim()) return { changed: false, sha: "" };
+  git(["apply", ...applyArgs(paths, excludes), "-"], { cwd, input: patch });
+  if (!git(["status", "--porcelain", "--", ...spec], { cwd }).trim()) return { changed: false, sha: "" };
   const { name, email } = parseAuthor(options.author);
-  git(["add", "-A", "--", ...paths], { cwd });
+  git(["add", "-A", "--", ...spec], { cwd });
   git(["-c", `user.name=${name}`, "-c", `user.email=${email}`, "commit", "-m", options.message], { cwd });
   const sha = git(["rev-parse", "HEAD"], { cwd }).trim();
   git(["push", "origin", `HEAD:refs/heads/${branch}`], { cwd });
@@ -19698,6 +19712,7 @@ try {
     directory: (0, import_node_path.resolve)(getInput("directory") || "."),
     patch: (0, import_node_path.resolve)(getInput("patch", { required: true })),
     paths: parsePaths(getInput("paths", { required: true })),
+    excludes: parseExcludes(getInput("exclude")),
     branch: getInput("branch", { required: true }),
     mode,
     message: getInput("message", { required: true }),

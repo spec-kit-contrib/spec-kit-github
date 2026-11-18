@@ -1,11 +1,15 @@
 import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import * as core from "@actions/core";
-import { parsePaths } from "../core/paths.ts";
+import { parseExcludes, parsePaths } from "../core/paths.ts";
 import { diff } from "./diff.ts";
 
 try {
-  const patch = diff(core.getInput("directory") || ".", parsePaths(core.getInput("paths", { required: true })));
+  const patch = diff(
+    core.getInput("directory") || ".",
+    parsePaths(core.getInput("paths", { required: true })),
+    parseExcludes(core.getInput("exclude")),
+  );
   const output = resolve(core.getInput("output") || "changes.patch");
   writeFileSync(output, patch);
   core.setOutput("patch", output);

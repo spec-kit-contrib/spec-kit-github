@@ -4,6 +4,8 @@ inputs:
   paths:
     description: Allowed paths, one per line (plain paths, no globs).
     required: true
+  exclude:
+    description: Paths that are never taken, even inside the allowed ones, one per line.
   directory:
     description: Repository directory.
     default: .

@@ -2,6 +2,19 @@ export interface PullRequest {
   headRepo: string;
   headRef: string;
   headSha: string;
+  /** Login of whoever opened the PR. */
+  author: string;
+}
+
+/** A submitted pull request review. */
+export interface Review {
+  login: string;
+  /** "User", "Bot", ... */
+  userType: string;
+  /** APPROVED, CHANGES_REQUESTED, COMMENTED or DISMISSED. */
+  state: string;
+  /** The commit the review was made on. */
+  commitId: string;
 }
 
 /** A comment in a review thread, oldest first. */
@@ -54,6 +67,8 @@ export interface DecideInput {
   getPullRequest: (number: number) => Promise<PullRequest>;
   /** Directories under specs/ at the given ref, e.g. ["specs/001-greeting-cli"]. */
   listSpecDirectories: (ref: string) => Promise<string[]>;
+  /** The reviews submitted on the pull request, oldest first. */
+  getReviews: (pullNumber: number) => Promise<Review[]>;
   /** The commenter's repository permission: admin, write, read or none. */
   getPermission: (login: string) => Promise<string>;
   /** Every review thread on the pull request. */
