@@ -63,9 +63,8 @@ export interface EventPayload {
 export interface DecideInput {
   eventName: string;
   payload: EventPayload;
+  /** The agent's account: it is assigned to start the flow, it writes, and its own comments are never commands. */
   githubLogin: string;
-  /** The account the agent writes as: its comments are never commands. */
-  agentLogin: string;
   getPullRequest: (number: number) => Promise<PullRequest>;
   /** Directories under specs/ at the given ref, e.g. ["specs/001-greeting-cli"]. */
   listSpecDirectories: (ref: string) => Promise<string[]>;

@@ -1,6 +1,5 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
-import { DEFAULT_AGENT_LOGIN } from "../core/login.ts";
 import { STATES, staleReactions, type Reaction, type State } from "./state.ts";
 
 type Octokit = ReturnType<typeof github.getOctokit>;
@@ -62,7 +61,7 @@ async function main(): Promise<void> {
   const where = target(octokit);
   await where.create(state);
   // One state at a time: drop the agent's earlier state reactions, such as the eyes when done.
-  for (const id of staleReactions(await where.list(), state, core.getInput("agent-login") || DEFAULT_AGENT_LOGIN)) await where.remove(id);
+  for (const id of staleReactions(await where.list(), state, core.getInput("github-login", { required: true }))) await where.remove(id);
 }
 
 main().catch((error: unknown) => core.setFailed(error instanceof Error ? error.message : String(error)));

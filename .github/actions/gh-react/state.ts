@@ -12,8 +12,8 @@ export interface Reaction {
 }
 
 /** The reaction ids to delete so that only `keep` is left of the agent's own state reactions. */
-export function staleReactions(existing: Reaction[], keep: State, agentLogin: string): number[] {
+export function staleReactions(existing: Reaction[], keep: State, login: string): number[] {
   return existing
-    .filter((r) => sameLogin(r.login, agentLogin) && r.content !== keep && (STATES as readonly string[]).includes(r.content))
+    .filter((r) => sameLogin(r.login, login) && r.content !== keep && (STATES as readonly string[]).includes(r.content))
     .map((r) => r.id);
 }

@@ -35,7 +35,6 @@ function input(eventName: string, payload: EventPayload, extra: Partial<DecideIn
     eventName,
     payload,
     githubLogin: "agent",
-    agentLogin: "github-actions[bot]",
     getPullRequest: async () => goodPr,
     listSpecDirectories: async () => ["specs/001-greeting-cli"],
     getThreads: async () => [],
@@ -230,7 +229,7 @@ function review(body: string, over: Partial<NonNullable<EventPayload["comment"]>
 }
 
 const msg = (id: number, body: string, login = "alice", userType = "User"): ThreadComment => ({ id, login, userType, body });
-const agent = (id: number, body: string): ThreadComment => msg(id, body, "github-actions", "Bot");
+const agent = (id: number, body: string): ThreadComment => msg(id, body, "agent", "User");
 
 const thread = (comments: ThreadComment[], over: Partial<ReviewThread> = {}): ReviewThread => ({
   path: SPEC,
@@ -297,7 +296,7 @@ test("a thread the agent answered and the person replied to is waiting again", a
   const waiting = thread([msg(200, "Is 0 allowed?"), agent(201, "Should 0 be rejected?"), msg(202, "Yes, reject it.")]);
   const d = await decide(input("pull_request_review_comment", review(COMMAND.body), threadsIo(main, waiting)));
   assert.equal(d.run && d.threads.join(), "100,200");
-  assert.match(d.run ? d.prompt : "", /@alice: Is 0 allowed\?\n@github-actions: Should 0 be rejected\?\n@alice: Yes, reject it\./);
+  assert.match(d.run ? d.prompt : "", /@alice: Is 0 allowed\?\n@agent: Should 0 be rejected\?\n@alice: Yes, reject it\./);
 });
 
 test("a reply in the command thread continues it", async () => {
@@ -319,7 +318,7 @@ test("a plain comment on spec.md runs nothing by itself", async () => {
 });
 
 test("the agent's own reply never triggers a run", async () => {
-  const payload = review("Applied.", { user: { type: "Bot", login: "github-actions[bot]" } });
+  const payload = review("Applied.", { user: { type: "User", login: "agent" } });
   assert.match(await skipReason(input("pull_request_review_comment", payload)), /from the agent itself/);
 });
 
@@ -396,37 +395,37 @@ test("the other commands do not look at reviews", async () => {
   assert.equal(d.run, true);
 });
 
-// --- the agent with a token of its own: it is a user with write access, and must never answer itself ---
+// --- the agent is a user with write access whose comments start workflows: it must never answer itself ---
 
 const AGENT = "ralch-bot";
 
 test("a comment from the agent account is never a command, even though it is a user with write access", async () => {
   const payload = comment("/speckit-plan", { user: { type: "User", login: AGENT } });
-  const reason = await skipReason(input("issue_comment", payload, { agentLogin: AGENT }));
+  const reason = await skipReason(input("issue_comment", payload, { githubLogin: AGENT }));
   assert.match(reason, /from the agent itself/);
 });
 
 test("the agent's reply in a clarify thread does not start another run", async () => {
   const replied = thread([COMMAND, msg(101, "Applied.", AGENT)]);
   const payload = review("Applied.", { id: 101, in_reply_to_id: 100, user: { type: "User", login: AGENT } });
-  const reason = await skipReason(input("pull_request_review_comment", payload, { ...threadsIo(replied), agentLogin: AGENT }));
+  const reason = await skipReason(input("pull_request_review_comment", payload, { ...threadsIo(replied), githubLogin: AGENT }));
   assert.match(reason, /from the agent itself/);
 });
 
 test("the guard ignores case and the [bot] suffix", async () => {
   const payload = comment("/speckit-plan", { user: { type: "Bot", login: "GitHub-Actions[bot]" } });
-  assert.match(await skipReason(input("issue_comment", payload)), /from the agent itself/);
+  assert.match(await skipReason(input("issue_comment", payload, { githubLogin: "github-actions" })), /from the agent itself/);
 });
 
 test("a person is not the agent just because the agent has another login", async () => {
-  const d = await decide(input("issue_comment", comment("/speckit-plan"), { agentLogin: AGENT }));
+  const d = await decide(input("issue_comment", comment("/speckit-plan"), { githubLogin: AGENT }));
   assert.equal(d.run, true);
 });
 
 test("a thread the agent account answered last is not waiting on a human", async () => {
   const answered = thread([msg(500, "already answered"), msg(501, "Applied.", AGENT)]);
   const d = await decide(
-    input("pull_request_review_comment", review(COMMAND.body), { ...threadsIo(main, answered), agentLogin: AGENT }),
+    input("pull_request_review_comment", review(COMMAND.body), { ...threadsIo(main, answered), githubLogin: AGENT }),
   );
   assert.equal(d.run && d.threads.join(), "100");
 });
@@ -435,7 +434,7 @@ test("the agent account's comments stay in the prompt without a permission looku
   const mixed = thread([COMMAND, msg(101, "Should the max be inclusive?", AGENT), msg(102, "Yes.")]);
   const getPermission = async (login: string) => (login === AGENT ? "read" : "write");
   const d = await decide(
-    input("pull_request_review_comment", review(COMMAND.body), { ...threadsIo(mixed), getPermission, agentLogin: AGENT }),
+    input("pull_request_review_comment", review(COMMAND.body), { ...threadsIo(mixed), getPermission, githubLogin: AGENT }),
   );
   assert.match(d.run ? d.prompt : "", /@ralch-bot: Should the max be inclusive\?/);
 });

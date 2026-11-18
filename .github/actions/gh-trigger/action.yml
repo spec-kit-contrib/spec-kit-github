@@ -1,14 +1,12 @@
 name: Spec Kit trigger
 description: Decide whether a Spec Kit command should run for this event, and build its prompt.
 inputs:
+  github-login:
+    description: The agent's account. Assigning an issue to it starts the flow, the commits are made as it, and its own comments are never commands.
+    required: true
   github-token:
     description: Token with pull-requests read, used to look up the PR head.
     required: true
-  github-login:
-    description: Login whose assignment starts the flow.
-    required: true
-  agent-login:
-    description: Login the agent writes as. Comments from it are never commands. Defaults to github-actions[bot].
 outputs:
   run:
     description: "'true' when a command should run."

@@ -12,18 +12,22 @@
 #                                 Replies in the command thread continue it. Humans resolve threads.
 # The files in the PR branch are the source of truth; comments only point at them.
 #
-#   prompt   decides what to run (read-only, no secrets)
-#   ack      reacts with eyes to the command (write token, no API key)
+#   prompt   decides what to run (read-only, no secret values)
+#   ack      reacts with eyes to the command (agent token, no API key)
 #   execute  runs the agent: has ANTHROPIC_API_KEY, read-only token; uploads a patch
-#   push     commits the patch (specs/ only): has the write token, no API key
+#   push     commits the patch: has the agent token, no API key
 #   finish   replaces the eyes with thumbs up (all jobs succeeded) or confused (one failed)
 #
-# Issue and issue_comment events run this file from the default branch, so a PR cannot
-# change the rules it is judged by. Review comment events run it from the PR's merge ref;
-# only people with write access can push to a spec/* branch, and push still commits specs/ only. In push, the local actions come from a default-branch
-# checkout and the PR branch is only data (work/). In execute the PR branch is checked out
-# at the root so the agent can work on it; the diff action runs from there but sees no
-# secrets, and push re-filters its patch with trusted code.
+# One account does everything the agent writes: the AGENT_ASSIGNEE user, with its AGENT_TOKEN.
+# You assign it, it authors the commits, opens the PR, replies and reacts. Its own comments are
+# never commands, since they would start this workflow again.
+#
+# Issue and issue_comment events run this file from the default branch, so a PR cannot change the
+# rules it is judged by. Review comment events run it from the PR's merge ref; only people with
+# write access can push to a spec/* branch, and push still limits what is committed. In push, the
+# local actions come from a default-branch checkout and the PR branch is only data (work/). In
+# execute the PR branch is checked out at the root so the agent can work on it; the diff action
+# runs from there but sees no secrets, and push re-filters its patch with trusted code.
 name: Spec Kit
 
 on:
@@ -38,8 +42,6 @@ permissions:
   contents: read
 
 env:
-  # The account the agent writes as: the AGENT_ASSIGNEE user when an AGENT_TOKEN is set, else the Actions bot.
-  AGENT_LOGIN: ${{ secrets.AGENT_TOKEN && vars.AGENT_ASSIGNEE || 'github-actions[bot]' }}
   # Never committed by any command, so the agent cannot change what runs or what it may do.
   PROTECTED_PATHS: |
     .github
@@ -64,6 +66,8 @@ jobs:
       github.event.comment.in_reply_to_id ||
       contains(github.event.comment.body, '/speckit-clarify')
     runs-on: ubuntu-latest
+    env:
+      HAS_AGENT_TOKEN: ${{ secrets.AGENT_TOKEN != '' }}
     permissions:
       contents: read
       pull-requests: read
@@ -84,9 +88,14 @@ jobs:
       - id: trigger
         uses: ./.github/actions/gh-trigger
         with:
-          github-token: ${{ github.token }}
           github-login: ${{ vars.AGENT_ASSIGNEE }}
-          agent-login: ${{ env.AGENT_LOGIN }}
+          github-token: ${{ github.token }}
+      # Everything the agent writes is made as its own account, so there is nothing to fall back to.
+      - name: Require the agent's token
+        if: steps.trigger.outputs.run == 'true' && env.HAS_AGENT_TOKEN != 'true'
+        run: |
+          echo "::error::AGENT_TOKEN is not set. Add a fine-grained token of the AGENT_ASSIGNEE account as a repository secret named AGENT_TOKEN, see the README."
+          exit 1
 
   # Shows that the command was recognized: eyes on the comment (or the issue). Write token only.
   ack:
@@ -103,9 +112,9 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
       - uses: ./.github/actions/gh-react
         with:
-          github-token: ${{ secrets.AGENT_TOKEN || github.token }}
+          github-login: ${{ vars.AGENT_ASSIGNEE }}
+          github-token: ${{ secrets.AGENT_TOKEN }}
           content: eyes
-          agent-login: ${{ env.AGENT_LOGIN }}
 
   execute:
     needs: prompt
@@ -188,7 +197,7 @@ jobs:
         with:
           ref: ${{ needs.prompt.outputs.ref }}
           path: work
-          token: ${{ secrets.AGENT_TOKEN || github.token }}
+          token: ${{ secrets.AGENT_TOKEN }}
       - uses: actions/download-artifact@v4
         with:
           name: result
@@ -208,7 +217,7 @@ jobs:
       - if: steps.commit.outputs.changed == 'true' && github.event_name == 'issues'
         uses: ./.github/actions/gh-pull-request
         with:
-          github-token: ${{ secrets.AGENT_TOKEN || github.token }}
+          github-token: ${{ secrets.AGENT_TOKEN }}
           branch: ${{ needs.prompt.outputs.branch }}
           title: "[spec] #${{ needs.prompt.outputs.number }}"
           # The PR is assigned to whoever the issue is assigned to.
@@ -220,7 +229,7 @@ jobs:
       - if: steps.commit.outputs.changed == 'true' && github.event_name == 'issue_comment'
         uses: ./.github/actions/gh-comment
         with:
-          github-token: ${{ secrets.AGENT_TOKEN || github.token }}
+          github-token: ${{ secrets.AGENT_TOKEN }}
           issue: ${{ needs.prompt.outputs.number }}
           body: Stage `${{ needs.prompt.outputs.command }}` done in ${{ steps.commit.outputs.sha }}. Review the changed files in this PR.
       # A command that changed nothing (for example tasks before there is a plan): the agent's
@@ -231,14 +240,14 @@ jobs:
           needs.prompt.outputs.command != '/speckit-analyze'
         uses: ./.github/actions/gh-comment
         with:
-          github-token: ${{ secrets.AGENT_TOKEN || github.token }}
+          github-token: ${{ secrets.AGENT_TOKEN }}
           issue: ${{ needs.prompt.outputs.number }}
           body-file: report.md
       # Analyze only reports and changes no files: its report becomes one comment, updated in place.
       - if: needs.prompt.outputs.command == '/speckit-analyze'
         uses: ./.github/actions/gh-comment
         with:
-          github-token: ${{ secrets.AGENT_TOKEN || github.token }}
+          github-token: ${{ secrets.AGENT_TOKEN }}
           issue: ${{ needs.prompt.outputs.number }}
           body-file: report.md
           marker: speckit-analyze
@@ -246,7 +255,7 @@ jobs:
       - if: github.event_name == 'pull_request_review_comment'
         uses: ./.github/actions/gh-reply
         with:
-          github-token: ${{ secrets.AGENT_TOKEN || github.token }}
+          github-token: ${{ secrets.AGENT_TOKEN }}
           pull: ${{ needs.prompt.outputs.number }}
           threads: ${{ needs.prompt.outputs.threads }}
           body-file: report.md
@@ -267,6 +276,6 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
       - uses: ./.github/actions/gh-react
         with:
-          github-token: ${{ secrets.AGENT_TOKEN || github.token }}
+          github-login: ${{ vars.AGENT_ASSIGNEE }}
+          github-token: ${{ secrets.AGENT_TOKEN }}
           content: ${{ (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) && 'confused' || '+1' }}
-          agent-login: ${{ env.AGENT_LOGIN }}

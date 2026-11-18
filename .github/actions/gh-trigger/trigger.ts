@@ -13,7 +13,7 @@ export async function decide(input: DecideInput): Promise<Decision> {
   const { eventName, payload } = input;
   // The agent's own comments are never commands. With a token of its own, the agent is a user with
   // write access, and its comments start workflows, so without this it would answer itself forever.
-  if (payload.comment && sameLogin(payload.comment.user.login, input.agentLogin)) {
+  if (payload.comment && sameLogin(payload.comment.user.login, input.githubLogin)) {
     return skip("comment is from the agent itself");
   }
   if (eventName === "issues") return decideAssignment(input);
