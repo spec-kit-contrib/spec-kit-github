@@ -202,3 +202,7 @@ npm run build   # bundles each action into <name>/dist/index.cjs
 - Review comment events (`/speckit-clarify`) use the workflow file from the PR branch, not from
   the default branch. After you change the workflow, merge the default branch into open spec PRs,
   or they keep running the old one.
+
+## License
+
+[MIT](LICENSE)
