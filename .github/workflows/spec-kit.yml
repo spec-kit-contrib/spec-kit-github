@@ -213,7 +213,7 @@ jobs:
         with:
           github-token: ${{ github.token }}
           issue: ${{ needs.prompt.outputs.number }}
-          body: Stage `${{ needs.prompt.outputs.command }}` done in `${{ steps.commit.outputs.sha }}`. Review the changed files in this PR.
+          body: Stage `${{ needs.prompt.outputs.command }}` done in ${{ steps.commit.outputs.sha }}. Review the changed files in this PR.
       # A command that changed nothing (for example tasks before there is a plan): the agent's
       # own message says why. Analyze and clarify have their own replies.
       - if: >-
@@ -241,7 +241,7 @@ jobs:
           pull: ${{ needs.prompt.outputs.number }}
           threads: ${{ needs.prompt.outputs.threads }}
           body-file: report.md
-          footer: ${{ steps.commit.outputs.changed == 'true' && format('Applied in `{0}`.', steps.commit.outputs.sha) || '' }}
+          footer: ${{ steps.commit.outputs.changed == 'true' && format('Applied in {0}.', steps.commit.outputs.sha) || '' }}
 
   # The final state replaces the eyes: thumbs up when every job succeeded, confused otherwise.
   finish:
