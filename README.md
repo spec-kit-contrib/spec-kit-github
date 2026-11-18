@@ -131,7 +131,9 @@ and show how a project's toolchain and services reach both you and CI:
   they expose, such as `EXAMPLE_API_DATABASE_URL`.
 - `flake.nix` is the dev shell. Its shell hook starts the containers and exports those variables
   into your shell, and `.envrc` (`use flake`) loads it with direnv.
-- `ci.yml` runs the same thing in CI and prints the exported variable, to show the bridge works.
+- In CI the same bridge works: start the devcontainer with `devcontainer-env/devcontainer-ci`,
+  install Nix, then run your commands with `nix develop --command ...`, and the exported variables
+  are there. This repository has no such job, because it would run in every copy for nothing.
 
 The `execute` job starts the devcontainer and installs Nix, but today's commands (specify, plan,
 tasks, analyze, checklist, clarify) only read and write files, so the agent does not use that
