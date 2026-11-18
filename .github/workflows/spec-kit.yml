@@ -264,7 +264,7 @@ jobs:
   # The final state replaces the eyes: thumbs up when every job succeeded, confused otherwise.
   finish:
     needs: [prompt, execute, push]
-    if: always() && needs.prompt.outputs.run == 'true'
+    if: always() && needs.prompt.result == 'success' && needs.prompt.outputs.run == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
