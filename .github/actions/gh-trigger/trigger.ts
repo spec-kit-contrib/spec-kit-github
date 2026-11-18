@@ -13,7 +13,7 @@ export async function decide(input: DecideInput): Promise<Decision> {
   const { eventName, payload } = input;
   // The agent's own comments are never commands. With a token of its own, the agent is a user with
   // write access, and its comments start workflows, so without this it would answer itself forever.
-  if (payload.comment && sameLogin(payload.comment.user.login, input.githubLogin)) {
+  if (payload.comment && sameLogin(payload.comment.user.login, input.githubApp)) {
     return skip("comment is from the agent itself");
   }
   if (eventName === "issues") return decideAssignment(input);
@@ -24,7 +24,7 @@ export async function decide(input: DecideInput): Promise<Decision> {
 
 function decideAssignment({ payload, githubLogin }: DecideInput): Decision {
   if (!githubLogin) return skip("no agent assignee configured");
-  if (payload.assignee?.login !== githubLogin) return skip("not assigned to the agent");
+  if (!sameLogin(payload.assignee?.login ?? "", githubLogin)) return skip("not assigned to the agent");
   if (!payload.issue) return skip("no issue in payload");
   const { title, body } = payload.issue;
   const command = "/speckit-specify";

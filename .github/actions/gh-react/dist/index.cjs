@@ -24538,6 +24538,7 @@ function getOctokit(token, options, ...additionalPlugins) {
 }
 
 // core/login.ts
+var DEFAULT_AGENT_LOGIN = "github-actions[bot]";
 function sameLogin(a, b) {
   const normal = (login) => login.replace(/\[bot\]$/i, "").toLowerCase();
   return normal(a) !== "" && normal(a) === normal(b);
@@ -24588,7 +24589,7 @@ async function main() {
   const state = content;
   const where = target(octokit);
   await where.create(state);
-  for (const id of staleReactions(await where.list(), state, getInput("github-login", { required: true }))) await where.remove(id);
+  for (const id of staleReactions(await where.list(), state, getInput("github-app") || DEFAULT_AGENT_LOGIN)) await where.remove(id);
 }
 main().catch((error2) => setFailed(error2 instanceof Error ? error2.message : String(error2)));
 /*! Bundled license information:

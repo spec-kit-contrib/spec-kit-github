@@ -35,6 +35,7 @@ function input(eventName: string, payload: EventPayload, extra: Partial<DecideIn
     eventName,
     payload,
     githubLogin: "agent",
+    githubApp: "agent",
     getPullRequest: async () => goodPr,
     listSpecDirectories: async () => ["specs/001-greeting-cli"],
     getThreads: async () => [],
@@ -401,31 +402,31 @@ const AGENT = "ralch-bot";
 
 test("a comment from the agent account is never a command, even though it is a user with write access", async () => {
   const payload = comment("/speckit-plan", { user: { type: "User", login: AGENT } });
-  const reason = await skipReason(input("issue_comment", payload, { githubLogin: AGENT }));
+  const reason = await skipReason(input("issue_comment", payload, { githubApp: AGENT }));
   assert.match(reason, /from the agent itself/);
 });
 
 test("the agent's reply in a clarify thread does not start another run", async () => {
   const replied = thread([COMMAND, msg(101, "Applied.", AGENT)]);
   const payload = review("Applied.", { id: 101, in_reply_to_id: 100, user: { type: "User", login: AGENT } });
-  const reason = await skipReason(input("pull_request_review_comment", payload, { ...threadsIo(replied), githubLogin: AGENT }));
+  const reason = await skipReason(input("pull_request_review_comment", payload, { ...threadsIo(replied), githubApp: AGENT }));
   assert.match(reason, /from the agent itself/);
 });
 
 test("the guard ignores case and the [bot] suffix", async () => {
   const payload = comment("/speckit-plan", { user: { type: "Bot", login: "GitHub-Actions[bot]" } });
-  assert.match(await skipReason(input("issue_comment", payload, { githubLogin: "github-actions" })), /from the agent itself/);
+  assert.match(await skipReason(input("issue_comment", payload, { githubApp: "github-actions" })), /from the agent itself/);
 });
 
 test("a person is not the agent just because the agent has another login", async () => {
-  const d = await decide(input("issue_comment", comment("/speckit-plan"), { githubLogin: AGENT }));
+  const d = await decide(input("issue_comment", comment("/speckit-plan"), { githubApp: AGENT }));
   assert.equal(d.run, true);
 });
 
 test("a thread the agent account answered last is not waiting on a human", async () => {
   const answered = thread([msg(500, "already answered"), msg(501, "Applied.", AGENT)]);
   const d = await decide(
-    input("pull_request_review_comment", review(COMMAND.body), { ...threadsIo(main, answered), githubLogin: AGENT }),
+    input("pull_request_review_comment", review(COMMAND.body), { ...threadsIo(main, answered), githubApp: AGENT }),
   );
   assert.equal(d.run && d.threads.join(), "100");
 });
@@ -434,7 +435,50 @@ test("the agent account's comments stay in the prompt without a permission looku
   const mixed = thread([COMMAND, msg(101, "Should the max be inclusive?", AGENT), msg(102, "Yes.")]);
   const getPermission = async (login: string) => (login === AGENT ? "read" : "write");
   const d = await decide(
-    input("pull_request_review_comment", review(COMMAND.body), { ...threadsIo(mixed), getPermission, githubLogin: AGENT }),
+    input("pull_request_review_comment", review(COMMAND.body), { ...threadsIo(mixed), getPermission, githubApp: AGENT }),
   );
   assert.match(d.run ? d.prompt : "", /@ralch-bot: Should the max be inclusive\?/);
+});
+
+// --- github-login (assigned, credited) and github-app (writes) are different accounts ---
+
+test("an assignment to the login runs, even when the app is a different account", async () => {
+  const d = await decide(input("issues", assignment({ assignee: { login: "ralch-bot" } }), { githubLogin: "ralch-bot", githubApp: "ralch" }));
+  assert.equal(d.run && d.command, "/speckit-specify");
+});
+
+test("an assignment to the app does not run: the app writes, it is not the assignee", async () => {
+  const payload = assignment({ assignee: { login: "ralch" } });
+  const reason = await skipReason(input("issues", payload, { githubLogin: "ralch-bot", githubApp: "ralch" }));
+  assert.match(reason, /not assigned to the agent/);
+});
+
+test("the app's own comments are never commands, whether REST or GraphQL names it", async () => {
+  for (const login of ["ralch[bot]", "ralch"]) {
+    const payload = comment("/speckit-plan", { user: { type: "Bot", login } });
+    const reason = await skipReason(input("issue_comment", payload, { githubLogin: "ralch-bot", githubApp: "ralch" }));
+    assert.match(reason, /from the agent itself/);
+  }
+});
+
+test("the login's own comments are ordinary comments when the app is a different account", async () => {
+  const d = await decide(
+    input("issue_comment", comment("/speckit-plan", { user: { type: "User", login: "ralch-bot" } }), {
+      githubLogin: "ralch-bot",
+      githubApp: "ralch",
+    }),
+  );
+  assert.equal(d.run, true);
+});
+
+test("a thread the app answered last is not waiting on a human", async () => {
+  const answered = thread([msg(500, "note"), msg(501, "Applied.", "ralch[bot]", "Bot")]);
+  const d = await decide(
+    input("pull_request_review_comment", review(COMMAND.body), {
+      ...threadsIo(main, answered),
+      githubLogin: "ralch-bot",
+      githubApp: "ralch",
+    }),
+  );
+  assert.equal(d.run && d.threads.join(), "100");
 });

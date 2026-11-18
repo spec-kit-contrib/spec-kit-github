@@ -1,9 +1,8 @@
 name: Spec Kit react
 description: Show the state of a command as a reaction on the comment that gave it, or on the issue for an assignment.
 inputs:
-  github-login:
-    required: true
-    description: The agent's account, which the token belongs to. Only its own state reactions are replaced.
+  github-app:
+    description: The account the reactions are made as. Only its own state reactions are replaced. Defaults to github-actions[bot].
   github-token:
     required: true
     description: Token of the agent's account, with issues and pull-requests write.

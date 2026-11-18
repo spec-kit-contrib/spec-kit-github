@@ -19,12 +19,12 @@ const startsWithCommand = (body: string): boolean => /^\/speckit-clarify(\s|$)/.
 async function readable(
   comments: ThreadComment[],
   getPermission: DecideInput["getPermission"],
-  githubLogin: string,
+  githubApp: string,
 ): Promise<ThreadComment[]> {
-  const people = [...new Set(comments.filter((c) => !sameLogin(c.login, githubLogin) && c.userType === "User").map((c) => c.login))];
+  const people = [...new Set(comments.filter((c) => !sameLogin(c.login, githubApp) && c.userType === "User").map((c) => c.login))];
   const allowed = new Set<string>();
   for (const login of people) if (WRITE_PERMISSIONS.includes(await getPermission(login))) allowed.add(login);
-  return comments.filter((comment) => sameLogin(comment.login, githubLogin) || allowed.has(comment.login));
+  return comments.filter((comment) => sameLogin(comment.login, githubApp) || allowed.has(comment.login));
 }
 
 export function clarifyPrompt(threads: ReviewThread[]): string {
@@ -51,7 +51,7 @@ export function clarifyPrompt(threads: ReviewThread[]): string {
  * A /speckit-clarify comment on spec.md, or a reply in a thread it started. One run answers that
  * thread and every other thread on the same file that its author started and is still waiting on.
  */
-export async function decideReviewComment({ payload, getThreads, getPermission, githubLogin }: DecideInput): Promise<Decision> {
+export async function decideReviewComment({ payload, getThreads, getPermission, githubApp }: DecideInput): Promise<Decision> {
   const { comment, pull_request: pr } = payload;
   if (!comment || !pr) return skip("no review comment in payload");
   if (comment.user.type !== "User") return skip("commenter is not a user");
@@ -83,13 +83,13 @@ export async function decideReviewComment({ payload, getThreads, getPermission, 
       first !== undefined &&
       first.login === root.login &&
       last !== undefined &&
-      !sameLogin(last.login, githubLogin)
+      !sameLogin(last.login, githubApp)
     );
   });
 
   const included: ReviewThread[] = [];
   for (const thread of [main, ...others]) {
-    included.push({ ...thread, comments: await readable(thread.comments, getPermission, githubLogin) });
+    included.push({ ...thread, comments: await readable(thread.comments, getPermission, githubApp) });
   }
 
   return {

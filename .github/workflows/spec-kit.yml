@@ -18,9 +18,10 @@
 #   push     commits the patch: has the agent token, no API key
 #   finish   replaces the eyes with thumbs up (all jobs succeeded) or confused (one failed)
 #
-# One account does everything the agent writes: the AGENT_ASSIGNEE user, with its AGENT_TOKEN.
-# You assign it, it authors the commits, opens the PR, replies and reacts. Its own comments are
-# never commands, since they would start this workflow again.
+# Identities. AGENT_ASSIGNEE is the user you assign the issue to and who is credited on the commits.
+# Comments, replies, reactions and PRs are written as github-actions[bot] with the built-in token,
+# or, when AGENT_APP is set, as that account with AGENT_TOKEN. The writer's own comments are never
+# commands, since they would start this workflow again.
 #
 # Issue and issue_comment events run this file from the default branch, so a PR cannot change the
 # rules it is judged by. Review comment events run it from the PR's merge ref; only people with
@@ -88,13 +89,14 @@ jobs:
       - id: trigger
         uses: ./.github/actions/gh-trigger
         with:
+          github-app: ${{ vars.AGENT_APP }}
           github-login: ${{ vars.AGENT_ASSIGNEE }}
           github-token: ${{ github.token }}
-      # Everything the agent writes is made as its own account, so there is nothing to fall back to.
-      - name: Require the agent's token
-        if: steps.trigger.outputs.run == 'true' && env.HAS_AGENT_TOKEN != 'true'
+      # An app is named, so what writes is that account: it needs its token.
+      - name: Require the token of the account that writes
+        if: steps.trigger.outputs.run == 'true' && vars.AGENT_APP != '' && env.HAS_AGENT_TOKEN != 'true'
         run: |
-          echo "::error::AGENT_TOKEN is not set. Add a fine-grained token of the AGENT_ASSIGNEE account as a repository secret named AGENT_TOKEN, see the README."
+          echo "::error::AGENT_APP is set but AGENT_TOKEN is not. Add the token of that account as a repository secret named AGENT_TOKEN, or unset AGENT_APP to write as github-actions[bot]. See the README."
           exit 1
 
   # Shows that the command was recognized: eyes on the comment (or the issue). Write token only.
@@ -112,8 +114,8 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
       - uses: ./.github/actions/gh-react
         with:
-          github-login: ${{ vars.AGENT_ASSIGNEE }}
-          github-token: ${{ secrets.AGENT_TOKEN }}
+          github-app: ${{ vars.AGENT_APP }}
+          github-token: ${{ vars.AGENT_APP && secrets.AGENT_TOKEN || github.token }}
           content: eyes
 
   execute:
@@ -197,7 +199,7 @@ jobs:
         with:
           ref: ${{ needs.prompt.outputs.ref }}
           path: work
-          token: ${{ secrets.AGENT_TOKEN }}
+          token: ${{ vars.AGENT_APP && secrets.AGENT_TOKEN || github.token }}
       - uses: actions/download-artifact@v4
         with:
           name: result
@@ -217,7 +219,7 @@ jobs:
       - if: steps.commit.outputs.changed == 'true' && github.event_name == 'issues'
         uses: ./.github/actions/gh-pull-request
         with:
-          github-token: ${{ secrets.AGENT_TOKEN }}
+          github-token: ${{ vars.AGENT_APP && secrets.AGENT_TOKEN || github.token }}
           branch: ${{ needs.prompt.outputs.branch }}
           title: "[spec] #${{ needs.prompt.outputs.number }}"
           # The PR is assigned to whoever the issue is assigned to.
@@ -229,7 +231,7 @@ jobs:
       - if: steps.commit.outputs.changed == 'true' && github.event_name == 'issue_comment'
         uses: ./.github/actions/gh-comment
         with:
-          github-token: ${{ secrets.AGENT_TOKEN }}
+          github-token: ${{ vars.AGENT_APP && secrets.AGENT_TOKEN || github.token }}
           issue: ${{ needs.prompt.outputs.number }}
           body: Stage `${{ needs.prompt.outputs.command }}` done in ${{ steps.commit.outputs.sha }}. Review the changed files in this PR.
       # A command that changed nothing (for example tasks before there is a plan): the agent's
@@ -240,14 +242,14 @@ jobs:
           needs.prompt.outputs.command != '/speckit-analyze'
         uses: ./.github/actions/gh-comment
         with:
-          github-token: ${{ secrets.AGENT_TOKEN }}
+          github-token: ${{ vars.AGENT_APP && secrets.AGENT_TOKEN || github.token }}
           issue: ${{ needs.prompt.outputs.number }}
           body-file: report.md
       # Analyze only reports and changes no files: its report becomes one comment, updated in place.
       - if: needs.prompt.outputs.command == '/speckit-analyze'
         uses: ./.github/actions/gh-comment
         with:
-          github-token: ${{ secrets.AGENT_TOKEN }}
+          github-token: ${{ vars.AGENT_APP && secrets.AGENT_TOKEN || github.token }}
           issue: ${{ needs.prompt.outputs.number }}
           body-file: report.md
           marker: speckit-analyze
@@ -255,7 +257,7 @@ jobs:
       - if: github.event_name == 'pull_request_review_comment'
         uses: ./.github/actions/gh-reply
         with:
-          github-token: ${{ secrets.AGENT_TOKEN }}
+          github-token: ${{ vars.AGENT_APP && secrets.AGENT_TOKEN || github.token }}
           pull: ${{ needs.prompt.outputs.number }}
           threads: ${{ needs.prompt.outputs.threads }}
           body-file: report.md
@@ -276,6 +278,6 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
       - uses: ./.github/actions/gh-react
         with:
-          github-login: ${{ vars.AGENT_ASSIGNEE }}
-          github-token: ${{ secrets.AGENT_TOKEN }}
+          github-app: ${{ vars.AGENT_APP }}
+          github-token: ${{ vars.AGENT_APP && secrets.AGENT_TOKEN || github.token }}
           content: ${{ (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) && 'confused' || '+1' }}

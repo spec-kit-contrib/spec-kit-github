@@ -1,5 +1,6 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
+import { DEFAULT_AGENT_LOGIN } from "../core/login.ts";
 import { noreplyAuthor } from "./author.ts";
 import { decide, type EventPayload, type Review, type ReviewThread } from "./trigger.ts";
 
@@ -75,10 +76,13 @@ async function main(): Promise<void> {
     }
   };
 
+  const githubLogin = core.getInput("github-login", { required: true });
+
   const decision = await decide({
     eventName: context.eventName,
     payload: context.payload as unknown as EventPayload,
-    githubLogin: core.getInput("github-login"),
+    githubLogin,
+    githubApp: core.getInput("github-app") || DEFAULT_AGENT_LOGIN,
     listSpecDirectories,
     getThreads,
     getReviews,
@@ -103,7 +107,7 @@ async function main(): Promise<void> {
   // Commits are made as the login that starts the flow, so GitHub shows that account on them.
   // When it cannot be resolved the output stays empty and git-commit uses its default.
   let author = "";
-  const login = core.getInput("github-login");
+  const login = githubLogin;
   if (login) {
     try {
       const { data } = await octokit.rest.users.getByUsername({ username: login });

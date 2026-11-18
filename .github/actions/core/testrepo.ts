@@ -1,4 +1,9 @@
 // Test helper: a bare "remote" plus a clone with an initial commit on main.
+
+// The tests must not depend on whoever runs them: ignore their global and system git config, which
+// may sign commits with a key that is not available, or rewrite URLs.
+process.env["GIT_CONFIG_GLOBAL"] = "/dev/null";
+process.env["GIT_CONFIG_NOSYSTEM"] = "1";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";

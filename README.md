@@ -44,24 +44,23 @@ flowchart LR
 The job with the API key never has a write token, and `push` takes only `specs/**` from what the
 agent produced.
 
-## The agent account
+## Who does what
 
-One account does everything the agent writes: the user named in `AGENT_ASSIGNEE`, a dedicated
-account such as a machine user, acting with its own token (`AGENT_TOKEN`). You assign it the issue,
-and it replies to your commands:
+Two accounts show up, and each has one job:
 
-- it authors the commits, with a `Co-authored-by: Claude` trailer that says a model wrote them
-  (the commits are unverified, since they are not signed),
-- it opens the PR, posts the comments and replies in the threads, and puts the 👀, 👍 and 😕
-  reactions on your comments.
+- **The agent user** (`AGENT_ASSIGNEE`): a dedicated user, such as a machine user. You **assign the
+  issue to it** to start the flow, and the **commits are authored as it**. A `Co-authored-by: Claude`
+  trailer says a model wrote them. The commits are unverified, since they are not signed.
+- **The writer:** whatever writes the comments, replies, reactions and the PR. By default that is
+  **`github-actions[bot]`**, using the built-in token, with nothing to create. With `AGENT_APP` and
+  `AGENT_TOKEN` set (see [Set up](#set-up)) it is that account instead.
 
-Because it is a user with write access, its own comments start this workflow like anyone's, so the
-trigger never treats a comment from it as a command. Without that rule it would answer itself in a
-loop. Pushes it makes also start other workflows, for example a CI job on the PR.
+The writer's own comments are never treated as commands. If the writer is a user, they start this
+workflow like anyone's, so without that rule the agent would answer itself in a loop.
 
 Triggers:
 
-- `issues: assigned` to the agent account (the login in `AGENT_ASSIGNEE`) runs `/speckit-specify` with the issue
+- `issues: assigned` to the agent user (the login in `AGENT_ASSIGNEE`) runs `/speckit-specify` with the issue
   title and body, and opens a PR from `spec/<issue>`. The PR body says `Closes #<issue>`, so the PR
   shows in the issue's Development sidebar, and merging it closes the issue. The PR is assigned to
   the same people as the issue.
@@ -145,29 +144,34 @@ is saved by the `execute` job and posted by `push` as a comment, which is edited
 
 ## Set up
 
-Use this repository as a template, then:
+Use this repository as a template. The quick start needs one secret, one variable and one setting:
 
-1. **The agent account.** Create a dedicated GitHub user for the agent, for example `my-project-bot`,
+1. **The model key.** Add the repository secret `ANTHROPIC_API_KEY`. Use a dedicated key with a
+   spend limit.
+2. **The agent user.** Create a dedicated GitHub user for the agent, for example `my-project-bot`,
    and give it **write** access to the repository: as an outside collaborator, or through a team in
    your organization. It has to be a user you can assign issues to. A GitHub App cannot be assigned
-   an issue, so it does not work here.
-2. **Its token.** From the agent account, create a fine-grained personal access token limited to
-   this repository, with read and write on Contents, Issues and Pull requests, and an expiry. Add it
-   as the repository secret `AGENT_TOKEN`.
-3. **The model key.** Add the repository secret `ANTHROPIC_API_KEY`. Use a dedicated key with a
-   spend limit.
-4. **The variable.** Add the repository variable `AGENT_ASSIGNEE` with the agent account's login.
+   an issue. For a quick try you can use your own account.
+3. **The variable.** Add the repository variable `AGENT_ASSIGNEE` with that user's login.
+4. **Actions setting.** In Settings, Actions, General, allow "Allow GitHub Actions to create and
+   approve pull requests", so the built-in token can open the PR.
 5. **Free organization plan with a private repository.** Organization-level secrets and variables
    are not passed to the repository. Create them at repository level.
 
-If `AGENT_TOKEN` is missing, a command stops at the first job with a message that says so.
+With that, the comments, replies, reactions and the PR come from `github-actions[bot]`, and the
+commits show the agent user.
 
-You do not need to enable "Allow GitHub Actions to create and approve pull requests": the PRs are
-opened by the agent account, not by Actions.
+**Optional: let another account write.** To have the PR and comments come from an account of your
+choice, set the repository variable `AGENT_APP` to that account's name (an app's name without
+`[bot]`, or a user's login) and the secret `AGENT_TOKEN` to its token. For a user, make it a
+fine-grained personal access token limited to this repository, with read and write on Contents,
+Issues and Pull requests, and an expiry. If `AGENT_APP` is set without the token, a command stops
+at the first job with a message that says so. The token is used only together with `AGENT_APP`.
 
-The token can do more than `GITHUB_TOKEN`, which is limited to one repository and one run. Keep it
-to this repository, give it an expiry, and rotate it. Only the jobs that write (`ack`, `push` and
-`finish`) use it. The `execute` job, which runs the agent and holds the model key, never sees it.
+That token can do more than `GITHUB_TOKEN`, which is limited to one repository and one run. Only the
+jobs that write (`ack`, `push` and `finish`) use it. The `execute` job, which runs the agent and
+holds the model key, never sees it. Pushes made with it also start other workflows, such as a CI
+job on the PR.
 
 Spec Kit itself is already installed: `.specify/` and `.claude/skills/` are the output of
 `specify init --here --integration claude`. To upgrade, re-run that command and commit the result.
@@ -201,7 +205,7 @@ variables with your project's, and add your language's tools to the flake.
   except the protected paths. So the agent cannot change the workflow, the actions or the settings.
 - **Who can trigger a stage.** A comment runs only if the commenter has write access to the
   repository (checked through the API), the PR is from this repository, and the branch starts with
-  `spec/`. Assignment runs only for the agent account. `/speckit-implement` also needs an
+  `spec/`. Assignment runs only for the agent user. `/speckit-implement` also needs an
   approval, see [Implement](#implement).
 - **Rules come from the default branch.** These events run the workflow file from the default
   branch. In `push`, the local actions are read from a default-branch checkout and the PR branch
