@@ -133,7 +133,8 @@ and show how a project's toolchain and services reach both you and CI:
   into your shell, and `.envrc` (`use flake`) loads it with direnv.
 - In CI the same bridge works: start the devcontainer with `devcontainer-env/devcontainer-ci`,
   install Nix, then run your commands with `nix develop --command ...`, and the exported variables
-  are there. This repository has no such job, because it would run in every copy for nothing.
+  are there. There is no separate CI job for this here, because it would run in every copy for
+  nothing; the `execute` job below is the only place the workflow starts the devcontainer.
 
 The `execute` job starts the devcontainer and installs Nix, but today's commands (specify, plan,
 tasks, analyze, checklist, clarify) only read and write files, so the agent does not use that
