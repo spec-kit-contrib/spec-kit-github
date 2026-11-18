@@ -24,6 +24,8 @@ outputs:
     description: The issue or PR number the command belongs to.
   threads:
     description: Comma-separated ids of the first comments of the review threads to answer; the first is the thread the command was given in. Empty outside review comment events.
+  author:
+    description: "Commit author for github-login as 'Name <email>' (its no-reply address); empty when the user cannot be found."
   reason:
     description: Why nothing runs, when run is 'false'.
 runs:

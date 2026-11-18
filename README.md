@@ -54,6 +54,10 @@ Triggers:
   PR branch.
 - `pull_request_review_comment` on `specs/*/spec.md` runs `/speckit-clarify`, see below.
 
+Commits are made as the account in `AGENT_ASSIGNEE`, so GitHub shows its name and avatar on them. A
+`Co-authored-by: Claude` trailer says that a model wrote them. They stay unverified (they are not
+signed), and the pushes, the PRs and the comments are still from `github-actions[bot]`.
+
 The command shows its state as a reaction on your comment, or on the issue for an assignment:
 👀 running, 👍 done, 😕 failed. The final state replaces the 👀. A comment that gets no 👀 was not
 handled: it was ignored, or it was skipped while another run was in progress. When a command

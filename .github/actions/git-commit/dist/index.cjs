@@ -19680,6 +19680,7 @@ function gitSucceeds(args, options = {}) {
 }
 
 // git-commit/commit.ts
+var DEFAULT_AUTHOR = "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>";
 function parseAuthor(author) {
   const match = /^(.+?)\s*<(.+)>$/.exec(author.trim());
   if (!match) throw new Error(`author must look like "Name <email>": ${author}`);
@@ -19697,8 +19698,12 @@ function commit(options) {
   git(["apply", ...applyArgs(paths, excludes), "-"], { cwd, input: patch });
   if (!git(["status", "--porcelain", "--", ...spec], { cwd }).trim()) return { changed: false, sha: "" };
   const { name, email } = parseAuthor(options.author);
+  const trailers = options.trailers ?? [];
+  const message = trailers.length > 0 ? `${options.message}
+
+${trailers.join("\n")}` : options.message;
   git(["add", "-A", "--", ...spec], { cwd });
-  git(["-c", `user.name=${name}`, "-c", `user.email=${email}`, "commit", "-m", options.message], { cwd });
+  git(["-c", `user.name=${name}`, "-c", `user.email=${email}`, "commit", "-m", message], { cwd });
   const sha = git(["rev-parse", "HEAD"], { cwd }).trim();
   git(["push", "origin", `HEAD:refs/heads/${branch}`], { cwd });
   return { changed: true, sha };
@@ -19716,7 +19721,9 @@ try {
     branch: getInput("branch", { required: true }),
     mode,
     message: getInput("message", { required: true }),
-    author: getInput("author", { required: true })
+    // An empty value, such as an output that could not be resolved, means the default.
+    author: getInput("author") || DEFAULT_AUTHOR,
+    trailers: getInput("trailers").split("\n").map((line) => line.trim()).filter(Boolean)
   });
   setOutput("changed", String(result.changed));
   setOutput("sha", result.sha);

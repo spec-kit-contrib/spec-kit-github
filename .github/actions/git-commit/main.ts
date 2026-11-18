@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import * as core from "@actions/core";
 import { parseExcludes, parsePaths } from "../core/paths.ts";
-import { commit } from "./commit.ts";
+import { commit, DEFAULT_AUTHOR } from "./commit.ts";
 
 try {
   const mode = core.getInput("mode", { required: true });
@@ -14,7 +14,9 @@ try {
     branch: core.getInput("branch", { required: true }),
     mode,
     message: core.getInput("message", { required: true }),
-    author: core.getInput("author", { required: true }),
+    // An empty value, such as an output that could not be resolved, means the default.
+    author: core.getInput("author") || DEFAULT_AUTHOR,
+    trailers: core.getInput("trailers").split("\n").map((line) => line.trim()).filter(Boolean),
   });
   core.setOutput("changed", String(result.changed));
   core.setOutput("sha", result.sha);

@@ -18,6 +18,8 @@ inputs:
   message:
     description: Commit message.
     required: true
+  trailers:
+    description: Lines added to the commit message after a blank line, one per line, for example Co-authored-by.
   author:
     description: Commit author, as "Name <email>".
     default: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>

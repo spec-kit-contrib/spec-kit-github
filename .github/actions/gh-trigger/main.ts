@@ -1,5 +1,6 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
+import { noreplyAuthor } from "./author.ts";
 import { decide, type EventPayload, type Review, type ReviewThread } from "./trigger.ts";
 
 async function main(): Promise<void> {
@@ -99,7 +100,22 @@ async function main(): Promise<void> {
     core.setOutput("reason", decision.reason);
     return;
   }
+  // Commits are made as the login that starts the flow, so GitHub shows that account on them.
+  // When it cannot be resolved the output stays empty and git-commit uses its default.
+  let author = "";
+  const login = core.getInput("github-login");
+  if (login) {
+    try {
+      const { data } = await octokit.rest.users.getByUsername({ username: login });
+      author = noreplyAuthor(data.login, data.id);
+    } catch (error) {
+      if ((error as { status?: number }).status !== 404) throw error;
+      core.warning(`could not find the user ${login}, commits will use the default author`);
+    }
+  }
+
   core.setOutput("run", "true");
+  core.setOutput("author", author);
   core.setOutput("command", decision.command);
   core.setOutput("ref", decision.ref);
   core.setOutput("prompt", decision.prompt);

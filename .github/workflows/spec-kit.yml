@@ -74,6 +74,7 @@ jobs:
       feature-directory: ${{ steps.trigger.outputs.feature-directory }}
       number: ${{ steps.trigger.outputs.number }}
       threads: ${{ steps.trigger.outputs.threads }}
+      author: ${{ steps.trigger.outputs.author }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -193,6 +194,9 @@ jobs:
           patch: changes.patch
           paths: ${{ needs.prompt.outputs.command == '/speckit-implement' && '.' || 'specs' }}
           exclude: ${{ env.PROTECTED_PATHS }}
+          # The commits show the account that starts the flow. A model wrote them, and the trailer says so.
+          author: ${{ needs.prompt.outputs.author }}
+          trailers: "Co-authored-by: Claude <noreply@anthropic.com>"
           branch: ${{ needs.prompt.outputs.branch }}
           mode: ${{ github.event_name == 'issues' && 'create' || 'update' }}
           message: ${{ needs.prompt.outputs.command }} #${{ needs.prompt.outputs.number }}

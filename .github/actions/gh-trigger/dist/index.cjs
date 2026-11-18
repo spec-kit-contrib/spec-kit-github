@@ -20403,6 +20403,9 @@ function setFailed(message) {
 function error(message, properties = {}) {
   issueCommand("error", toCommandProperties(properties), message instanceof Error ? message.toString() : message);
 }
+function warning(message, properties = {}) {
+  issueCommand("warning", toCommandProperties(properties), message instanceof Error ? message.toString() : message);
+}
 function info(message) {
   process.stdout.write(message + os4.EOL);
 }
@@ -24579,6 +24582,11 @@ function getOctokit(token, options, ...additionalPlugins) {
   return new GitHubWithPlugins(getOctokitOptions(token, options));
 }
 
+// gh-trigger/author.ts
+function noreplyAuthor(login, id) {
+  return `${login} <${id}+${login}@users.noreply.github.com>`;
+}
+
 // gh-trigger/types.ts
 var WRITE_PERMISSIONS = ["admin", "maintain", "write"];
 var SPEC_BRANCH_PREFIX = "spec/";
@@ -24784,9 +24792,9 @@ async function main() {
       commitId: review.commit_id ?? ""
     }));
   };
-  const getPermission = async (login) => {
+  const getPermission = async (login2) => {
     try {
-      const { data } = await octokit.rest.repos.getCollaboratorPermissionLevel({ ...context3.repo, username: login });
+      const { data } = await octokit.rest.repos.getCollaboratorPermissionLevel({ ...context3.repo, username: login2 });
       return data.permission;
     } catch (error2) {
       if (error2.status === 404) return "none";
@@ -24817,7 +24825,19 @@ async function main() {
     setOutput("reason", decision.reason);
     return;
   }
+  let author = "";
+  const login = getInput("github-login");
+  if (login) {
+    try {
+      const { data } = await octokit.rest.users.getByUsername({ username: login });
+      author = noreplyAuthor(data.login, data.id);
+    } catch (error2) {
+      if (error2.status !== 404) throw error2;
+      warning(`could not find the user ${login}, commits will use the default author`);
+    }
+  }
   setOutput("run", "true");
+  setOutput("author", author);
   setOutput("command", decision.command);
   setOutput("ref", decision.ref);
   setOutput("prompt", decision.prompt);

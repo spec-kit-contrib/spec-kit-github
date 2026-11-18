@@ -125,3 +125,24 @@ test("an excluded path wins over an allowed one that contains it", () => {
   assert.equal(result.changed, true);
   assert.deepEqual(remoteFiles(remote, "spec/7"), ["README.md", "specs/001-x/spec.md"]);
 });
+
+test("the commit carries the given author and committer, and the trailers after a blank line", () => {
+  const { remote, work } = makeRepo();
+  const patch = patchFile(remote, { "specs/001-x/spec.md": "spec\n" });
+  commit(
+    options(work, patch, {
+      author: "ralch-bot <12345+ralch-bot@users.noreply.github.com>",
+      trailers: ["Co-authored-by: Claude <noreply@anthropic.com>"],
+    }),
+  );
+  const log = git(["log", "-1", "--format=%an <%ae>|%cn <%ce>%n%B", "spec/7"], { cwd: remote });
+  assert.match(log, /^ralch-bot <12345\+ralch-bot@users\.noreply\.github\.com>\|ralch-bot <12345\+ralch-bot@users\.noreply\.github\.com>\n/);
+  assert.match(log, /specify #7\n\nCo-authored-by: Claude <noreply@anthropic\.com>/);
+});
+
+test("without trailers the message is unchanged", () => {
+  const { remote, work } = makeRepo();
+  const patch = patchFile(remote, { "specs/001-x/spec.md": "spec\n" });
+  commit(options(work, patch));
+  assert.equal(git(["log", "-1", "--format=%B", "spec/7"], { cwd: remote }).trim(), "specify #7");
+});
