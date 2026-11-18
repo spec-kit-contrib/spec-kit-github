@@ -1,5 +1,6 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
+import { DEFAULT_AGENT_LOGIN } from "../core/login.ts";
 import { noreplyAuthor } from "./author.ts";
 import { decide, type EventPayload, type Review, type ReviewThread } from "./trigger.ts";
 
@@ -79,6 +80,7 @@ async function main(): Promise<void> {
     eventName: context.eventName,
     payload: context.payload as unknown as EventPayload,
     githubLogin: core.getInput("github-login"),
+    agentLogin: core.getInput("agent-login") || DEFAULT_AGENT_LOGIN,
     listSpecDirectories,
     getThreads,
     getReviews,

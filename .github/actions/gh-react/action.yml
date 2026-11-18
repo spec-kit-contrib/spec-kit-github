@@ -7,6 +7,8 @@ inputs:
   content:
     required: true
     description: "eyes (running), +1 (done) or confused (failed). The agent's other state reactions are removed."
+  agent-login:
+    description: Login the agent reacts as, so only its own state reactions are replaced. Defaults to github-actions[bot].
 runs:
   using: node24
   main: dist/index.cjs

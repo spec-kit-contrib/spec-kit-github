@@ -24537,10 +24537,17 @@ function getOctokit(token, options, ...additionalPlugins) {
   return new GitHubWithPlugins(getOctokitOptions(token, options));
 }
 
+// core/login.ts
+var DEFAULT_AGENT_LOGIN = "github-actions[bot]";
+function sameLogin(a, b) {
+  const normal = (login) => login.replace(/\[bot\]$/i, "").toLowerCase();
+  return normal(a) !== "" && normal(a) === normal(b);
+}
+
 // gh-react/state.ts
 var STATES = ["eyes", "+1", "confused"];
 function staleReactions(existing, keep, agentLogin) {
-  return existing.filter((r) => r.login === agentLogin && r.content !== keep && STATES.includes(r.content)).map((r) => r.id);
+  return existing.filter((r) => sameLogin(r.login, agentLogin) && r.content !== keep && STATES.includes(r.content)).map((r) => r.id);
 }
 
 // gh-react/main.ts
@@ -24582,7 +24589,7 @@ async function main() {
   const state = content;
   const where = target(octokit);
   await where.create(state);
-  for (const id of staleReactions(await where.list(), state, "github-actions[bot]")) await where.remove(id);
+  for (const id of staleReactions(await where.list(), state, getInput("agent-login") || DEFAULT_AGENT_LOGIN)) await where.remove(id);
 }
 main().catch((error2) => setFailed(error2 instanceof Error ? error2.message : String(error2)));
 /*! Bundled license information:

@@ -1,4 +1,5 @@
 // Pure decision logic: no I/O except the injected lookups.
+import { sameLogin } from "../core/login.ts";
 import { approvalStatus } from "./approval.ts";
 import { decideReviewComment } from "./review.ts";
 import { SPEC_BRANCH_PREFIX, WRITE_PERMISSIONS, skip, type DecideInput, type Decision } from "./types.ts";
@@ -10,6 +11,11 @@ export const COMMENT_COMMANDS = ["plan", "tasks", "checklist", "converge", "anal
 
 export async function decide(input: DecideInput): Promise<Decision> {
   const { eventName, payload } = input;
+  // The agent's own comments are never commands. With a token of its own, the agent is a user with
+  // write access, and its comments start workflows, so without this it would answer itself forever.
+  if (payload.comment && sameLogin(payload.comment.user.login, input.agentLogin)) {
+    return skip("comment is from the agent itself");
+  }
   if (eventName === "issues") return decideAssignment(input);
   if (eventName === "issue_comment") return decideComment(input);
   if (eventName === "pull_request_review_comment") return decideReviewComment(input);

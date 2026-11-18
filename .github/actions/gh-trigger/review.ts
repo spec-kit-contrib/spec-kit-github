@@ -1,7 +1,7 @@
+import { sameLogin } from "../core/login.ts";
 import {
   SPEC_BRANCH_PREFIX,
   WRITE_PERMISSIONS,
-  isAgent,
   skip,
   type DecideInput,
   type Decision,
@@ -16,11 +16,15 @@ const SPEC_FILE = /^(specs\/[^/]+)\/spec\.md$/;
 const startsWithCommand = (body: string): boolean => /^\/speckit-clarify(\s|$)/.test(body.trimStart());
 
 /** The thread comments the agent may read: people with write access, and the agent itself. */
-async function readable(comments: ThreadComment[], getPermission: DecideInput["getPermission"]): Promise<ThreadComment[]> {
-  const people = [...new Set(comments.filter((c) => !isAgent(c.login) && c.userType === "User").map((c) => c.login))];
+async function readable(
+  comments: ThreadComment[],
+  getPermission: DecideInput["getPermission"],
+  agentLogin: string,
+): Promise<ThreadComment[]> {
+  const people = [...new Set(comments.filter((c) => !sameLogin(c.login, agentLogin) && c.userType === "User").map((c) => c.login))];
   const allowed = new Set<string>();
   for (const login of people) if (WRITE_PERMISSIONS.includes(await getPermission(login))) allowed.add(login);
-  return comments.filter((comment) => isAgent(comment.login) || allowed.has(comment.login));
+  return comments.filter((comment) => sameLogin(comment.login, agentLogin) || allowed.has(comment.login));
 }
 
 export function clarifyPrompt(threads: ReviewThread[]): string {
@@ -47,7 +51,7 @@ export function clarifyPrompt(threads: ReviewThread[]): string {
  * A /speckit-clarify comment on spec.md, or a reply in a thread it started. One run answers that
  * thread and every other thread on the same file that its author started and is still waiting on.
  */
-export async function decideReviewComment({ payload, getThreads, getPermission }: DecideInput): Promise<Decision> {
+export async function decideReviewComment({ payload, getThreads, getPermission, agentLogin }: DecideInput): Promise<Decision> {
   const { comment, pull_request: pr } = payload;
   if (!comment || !pr) return skip("no review comment in payload");
   if (comment.user.type !== "User") return skip("commenter is not a user");
@@ -79,13 +83,13 @@ export async function decideReviewComment({ payload, getThreads, getPermission }
       first !== undefined &&
       first.login === root.login &&
       last !== undefined &&
-      !isAgent(last.login)
+      !sameLogin(last.login, agentLogin)
     );
   });
 
   const included: ReviewThread[] = [];
   for (const thread of [main, ...others]) {
-    included.push({ ...thread, comments: await readable(thread.comments, getPermission) });
+    included.push({ ...thread, comments: await readable(thread.comments, getPermission, agentLogin) });
   }
 
   return {

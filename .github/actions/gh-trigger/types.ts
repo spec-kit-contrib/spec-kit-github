@@ -64,6 +64,8 @@ export interface DecideInput {
   eventName: string;
   payload: EventPayload;
   githubLogin: string;
+  /** The account the agent writes as: its comments are never commands. */
+  agentLogin: string;
   getPullRequest: (number: number) => Promise<PullRequest>;
   /** Directories under specs/ at the given ref, e.g. ["specs/001-greeting-cli"]. */
   listSpecDirectories: (ref: string) => Promise<string[]>;
@@ -98,9 +100,5 @@ export type Decision =
 export const WRITE_PERMISSIONS = ["admin", "maintain", "write"];
 // Only PRs from branches with this prefix are touched.
 export const SPEC_BRANCH_PREFIX = "spec/";
-// The agent's own login: its replies are part of a thread but never trigger a run.
-export const AGENT_LOGIN = "github-actions[bot]";
-// REST says "github-actions[bot]" and GraphQL says "github-actions" for the same account.
-export const isAgent = (login: string): boolean => login.replace(/\[bot\]$/, "") === "github-actions";
 
 export const skip = (reason: string): Decision => ({ run: false, reason });

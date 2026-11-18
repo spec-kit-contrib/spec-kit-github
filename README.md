@@ -148,6 +148,22 @@ Use this repository as a template, then:
 Spec Kit itself is already installed: `.specify/` and `.claude/skills/` are the output of
 `specify init --here --integration claude`. To upgrade, re-run that command and commit the result.
 
+## Optional: write as your own account
+
+By default the PRs, comments and reactions come from `github-actions[bot]`. To have them come from
+the `AGENT_ASSIGNEE` user, give the repository a secret **`AGENT_TOKEN`**: a fine-grained personal
+access token of that user, limited to this repository, with read and write on Contents, Issues and
+Pull requests. The user needs write access to the repository.
+
+- The jobs that write (`ack`, `push`, `finish`) use the token. The `execute` job, which runs the
+  agent, never sees it. Without the secret, everything uses `github.token` as before.
+- The agent's own comments are never treated as commands. This matters: comments made with a
+  user's token start workflows, unlike the ones made with `GITHUB_TOKEN`, so without that rule the
+  agent would answer itself in a loop.
+- Pushes made with the token start other workflows, for example a CI job on the PR.
+- The token can do more than `GITHUB_TOKEN`, which is limited to one repository and one run. Keep
+  it to this repository, give it an expiry, and rotate it.
+
 ## The development environment
 
 `flake.nix`, `.devcontainer/` and `.envrc` follow the

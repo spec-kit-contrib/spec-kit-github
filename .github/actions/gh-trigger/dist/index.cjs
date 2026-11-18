@@ -24582,6 +24582,13 @@ function getOctokit(token, options, ...additionalPlugins) {
   return new GitHubWithPlugins(getOctokitOptions(token, options));
 }
 
+// core/login.ts
+var DEFAULT_AGENT_LOGIN = "github-actions[bot]";
+function sameLogin(a, b) {
+  const normal = (login) => login.replace(/\[bot\]$/i, "").toLowerCase();
+  return normal(a) !== "" && normal(a) === normal(b);
+}
+
 // gh-trigger/author.ts
 function noreplyAuthor(login, id) {
   return `${login} <${id}+${login}@users.noreply.github.com>`;
@@ -24590,7 +24597,6 @@ function noreplyAuthor(login, id) {
 // gh-trigger/types.ts
 var WRITE_PERMISSIONS = ["admin", "maintain", "write"];
 var SPEC_BRANCH_PREFIX = "spec/";
-var isAgent = (login) => login.replace(/\[bot\]$/, "") === "github-actions";
 var skip = (reason) => ({ run: false, reason });
 
 // gh-trigger/approval.ts
@@ -24620,11 +24626,11 @@ async function approvalStatus(reviews, headSha, author, getPermission) {
 var COMMAND = "/speckit-clarify";
 var SPEC_FILE = /^(specs\/[^/]+)\/spec\.md$/;
 var startsWithCommand = (body) => /^\/speckit-clarify(\s|$)/.test(body.trimStart());
-async function readable(comments, getPermission) {
-  const people = [...new Set(comments.filter((c) => !isAgent(c.login) && c.userType === "User").map((c) => c.login))];
+async function readable(comments, getPermission, agentLogin) {
+  const people = [...new Set(comments.filter((c) => !sameLogin(c.login, agentLogin) && c.userType === "User").map((c) => c.login))];
   const allowed = /* @__PURE__ */ new Set();
   for (const login of people) if (WRITE_PERMISSIONS.includes(await getPermission(login))) allowed.add(login);
-  return comments.filter((comment) => isAgent(comment.login) || allowed.has(comment.login));
+  return comments.filter((comment) => sameLogin(comment.login, agentLogin) || allowed.has(comment.login));
 }
 function clarifyPrompt(threads) {
   const blocks = threads.map((thread, index) => {
@@ -24645,7 +24651,7 @@ function clarifyPrompt(threads) {
     ""
   ].join("\n");
 }
-async function decideReviewComment({ payload, getThreads, getPermission }) {
+async function decideReviewComment({ payload, getThreads, getPermission, agentLogin }) {
   const { comment, pull_request: pr } = payload;
   if (!comment || !pr) return skip("no review comment in payload");
   if (comment.user.type !== "User") return skip("commenter is not a user");
@@ -24663,11 +24669,11 @@ async function decideReviewComment({ payload, getThreads, getPermission }) {
   const others = threads.filter((t) => {
     const first = t.comments[0];
     const last = t.comments[t.comments.length - 1];
-    return t !== main2 && t.path === main2.path && !t.isResolved && first !== void 0 && first.login === root.login && last !== void 0 && !isAgent(last.login);
+    return t !== main2 && t.path === main2.path && !t.isResolved && first !== void 0 && first.login === root.login && last !== void 0 && !sameLogin(last.login, agentLogin);
   });
   const included = [];
   for (const thread of [main2, ...others]) {
-    included.push({ ...thread, comments: await readable(thread.comments, getPermission) });
+    included.push({ ...thread, comments: await readable(thread.comments, getPermission, agentLogin) });
   }
   return {
     run: true,
@@ -24685,6 +24691,9 @@ async function decideReviewComment({ payload, getThreads, getPermission }) {
 var COMMENT_COMMANDS = ["plan", "tasks", "checklist", "converge", "analyze", "implement"];
 async function decide(input) {
   const { eventName, payload } = input;
+  if (payload.comment && sameLogin(payload.comment.user.login, input.agentLogin)) {
+    return skip("comment is from the agent itself");
+  }
   if (eventName === "issues") return decideAssignment(input);
   if (eventName === "issue_comment") return decideComment(input);
   if (eventName === "pull_request_review_comment") return decideReviewComment(input);
@@ -24805,6 +24814,7 @@ async function main() {
     eventName: context3.eventName,
     payload: context3.payload,
     githubLogin: getInput("github-login"),
+    agentLogin: getInput("agent-login") || DEFAULT_AGENT_LOGIN,
     listSpecDirectories,
     getThreads,
     getReviews,

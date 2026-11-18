@@ -24,3 +24,12 @@ test("the agent's reactions that are not states are never touched", () => {
 test("nothing to delete when there are no reactions", () => {
   assert.deepEqual(staleReactions([], "eyes", BOT), []);
 });
+
+test("only the configured agent's reactions are replaced, whatever its login", () => {
+  const rows = [r(1, "eyes", "ralch-bot"), r(2, "eyes", "github-actions[bot]"), r(3, "eyes", "alice")];
+  assert.deepEqual(staleReactions(rows, "+1", "ralch-bot"), [1]);
+});
+
+test("the bot's REST and GraphQL names are the same account", () => {
+  assert.deepEqual(staleReactions([r(1, "eyes", "github-actions")], "+1", "github-actions[bot]"), [1]);
+});

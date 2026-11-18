@@ -2,6 +2,8 @@
 export const STATES = ["eyes", "+1", "confused"] as const;
 export type State = (typeof STATES)[number];
 
+import { sameLogin } from "../core/login.ts";
+
 export interface Reaction {
   id: number;
   content: string;
@@ -12,6 +14,6 @@ export interface Reaction {
 /** The reaction ids to delete so that only `keep` is left of the agent's own state reactions. */
 export function staleReactions(existing: Reaction[], keep: State, agentLogin: string): number[] {
   return existing
-    .filter((r) => r.login === agentLogin && r.content !== keep && (STATES as readonly string[]).includes(r.content))
+    .filter((r) => sameLogin(r.login, agentLogin) && r.content !== keep && (STATES as readonly string[]).includes(r.content))
     .map((r) => r.id);
 }
